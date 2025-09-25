@@ -954,6 +954,10 @@ func runNode(cmd *cobra.Command, args []string) {
 		logger.Fatal("If coinGeckoApiKey is set, then chainGovernorEnabled must be set")
 	}
 
+	if !argsConsistent([]string{*tonRPC, *tonContract}) {
+		logger.Fatal("Either --tonRPC and --tonContract must all be set or all unset")
+	}
+
 	// NOTE: If this flag isn't set, or the list is empty, Transfer Verifier should not be enabled.
 	if len(*transferVerifierEnabledChainIDs) != 0 {
 		var parseErr error
@@ -1055,6 +1059,7 @@ func runNode(cmd *cobra.Command, args []string) {
 	rpcMap["xrplevmRPC"] = *xrplEvmRPC
 	rpcMap["plasmaRPC"] = *plasmaRPC
 	rpcMap["creditcoinRPC"] = *creditCoinRPC
+	rpcMap["tonRPC"] = *tonRPC
 
 	// Wormchain is in the 3000 range.
 	rpcMap["wormchainURL"] = *wormchainURL
