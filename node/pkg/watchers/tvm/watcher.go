@@ -9,21 +9,19 @@ import (
 	"github.com/certusone/wormhole/node/pkg/readiness"
 	"github.com/certusone/wormhole/node/pkg/supervisor"
 	"github.com/certusone/wormhole/node/pkg/watchers"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/wormhole-foundation/wormhole/sdk/vaa"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tlb"
-	"github.com/xssnick/tonutils-go/ton"
-	"github.com/xssnick/tonutils-go/tvm/cell"
 	"go.uber.org/zap"
+	"math"
 	"time"
 )
 
 type Watcher struct {
 	chainID         vaa.ChainID
 	chainRPC        string
-	contractAddress address.Address
+	isTestnet       bool
+	contractAddress *address.Address
 	LastProcessedLT uint64                              // Last processed Logical Time (LT) of a transaction
 	msgChan         chan<- *common.MessagePublication   // The following is the channel for emitting observations
 	obsvReqC        <-chan *gossipv1.ObservationRequest // The following is the channel for receiving re-observation requests
@@ -31,97 +29,24 @@ type Watcher struct {
 	Subscriber      *TxSubscriber
 }
 
-// event::message_published#ee3a207e sender:MsgAddressInt sequence:uint64 nonce:uint32 payload:^Cell consistency_level:uint8
-type ExternalMessageModel struct {
-	OPCode           uint32
-	EmitterAddress   address.Address
-	Sequence         uint64
-	Nonce            uint32
-	Payload          *cell.Cell
-	ConsistencyLevel uint8
-}
-
-const OpCodeMessageNeeded = 0xee3a207e
-
-func getExternalMessageFields(tx *tlb.Transaction) (ExternalMessageModel, error) {
-	if tx == nil || tx.IO.In == nil || tx.IO.In.AsExternalOut() == nil || tx.IO.In.AsExternalOut().Payload() == nil {
-		return ExternalMessageModel{}, fmt.Errorf("no message body in tx")
-	}
-
-	message := tx.IO.In.AsExternalOut().Payload().BeginParse()
-
-	opCode, err := message.LoadUInt(32)
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load opcode")
-	}
-
-	emitterAddress, err := message.LoadAddr()
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load emitter address")
-	}
-
-	if emitterAddress == nil {
-		return ExternalMessageModel{}, fmt.Errorf("emitter address is nil")
-	}
-
-	sequence, err := message.LoadUInt(64)
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load sequence")
-	}
-
-	nonce, err := message.LoadUInt(32)
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load nonce")
-	}
-
-	payload, err := message.LoadRefCell()
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load payload")
-	}
-
-	consistencyLevel, err := message.LoadUInt(8)
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load consistency_level")
-	}
-
-	return ExternalMessageModel{
-		OPCode:           uint32(opCode),
-		EmitterAddress:   *emitterAddress,
-		Sequence:         sequence,
-		Nonce:            uint32(nonce),
-		Payload:          payload,
-		ConsistencyLevel: uint8(consistencyLevel),
-	}, nil
-}
-
 func NewWatcher(
 	chainID vaa.ChainID,
 	chainRPC string,
-	contractAddress address.Address,
+	isTestnet bool,
+	contractAddress *address.Address,
 	msgChan chan<- *common.MessagePublication,
 	obsvReqC <-chan *gossipv1.ObservationRequest,
 ) *Watcher {
 	return &Watcher{
 		chainID:         chainID,
 		chainRPC:        chainRPC,
+		isTestnet:       isTestnet,
 		msgChan:         msgChan,
 		obsvReqC:        obsvReqC,
 		contractAddress: contractAddress,
 		readinessSync:   common.MustConvertChainIdToReadinessSyncing(chainID),
 	}
 }
-
-var currentHeight = promauto.NewGauge(
-	prometheus.GaugeOpts{
-		Name: "wormhole_ton_current_height",
-		Help: "Current Ton block height",
-	})
-
-var messagesConfirmed = promauto.NewCounter(
-	prometheus.CounterOpts{
-		Name: "wormhole_ton_observations_confirmed_total",
-		Help: "Total number of verified Ton observations found",
-	})
 
 func (e *Watcher) Run(ctx context.Context) error {
 	logger := supervisor.Logger(ctx)
@@ -135,16 +60,29 @@ func (e *Watcher) Run(ctx context.Context) error {
 		zap.String("networkID", e.chainID.String()),
 	)
 
-	e.Subscriber = NewTxSubscriber()
+	var err error
 
-	// Create a connection to the blockchain and subscribe to
-	// core contract events here
+	lt, err := e.GetLastLTFromBlockchain(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get last LT: %w", err)
+	}
 
-	// Create the timer for the get_block_height go routine
+	trxChan := make(chan *tlb.Transaction)
+
+	e.Subscriber, err = NewTxSubscriber(e.contractAddress, lt, e.isTestnet, trxChan, logger)
+	if err != nil {
+		return fmt.Errorf("failed to create tx subscriber: %w", err)
+	}
+
+	if err = e.Subscriber.Work(ctx); err != nil {
+		logger.Error("failed to start subscriber", zap.Error(err))
+		return fmt.Errorf("failed to start subscriber: %w", err)
+	}
+
+	//Timer for the get_block_height go routine
 	timer := time.NewTicker(time.Second * 1)
 	defer timer.Stop()
 
-	// Create an error channel
 	errC := make(chan error)
 	defer close(errC)
 
@@ -154,9 +92,7 @@ func (e *Watcher) Run(ctx context.Context) error {
 	// Signal to the supervisor that this runnable has finished initialization
 	supervisor.Signal(ctx, supervisor.SignalHealthy)
 
-	// Create the go routine to handle events from core contract
-	common.RunWithScissors(ctx, errC, "core_events", func(ctx context.Context) error {
-		logger.Error("Entering core_events...")
+	common.RunWithScissors(ctx, errC, "ton_core_events", func(ctx context.Context) error {
 		for {
 			select {
 			case err := <-errC:
@@ -166,7 +102,7 @@ func (e *Watcher) Run(ctx context.Context) error {
 				logger.Error("coreEvents context done")
 				return ctx.Err()
 			case msg := <-e.Subscriber.outChan:
-				err := e.inspectBody(logger, msg, false)
+				err = e.inspectBody(logger, msg, false)
 				if err != nil {
 					p2p.DefaultRegistry.AddErrorCount(e.chainID, 1)
 					errC <- err //nolint:channelcheck // The watcher will exit anyway
@@ -199,7 +135,6 @@ func (e *Watcher) Run(ctx context.Context) error {
 				if err != nil {
 					logger.Error("Failed to get latest tl", zap.Error(err))
 				} else {
-					//todo обработать возможные ошибки преобразования
 					currentHeight.Set(float64(height))
 					logger.Debug("ton_getLatestTL", zap.Int64("result", int64(height)))
 
@@ -214,19 +149,30 @@ func (e *Watcher) Run(ctx context.Context) error {
 		}
 	})
 
-	// Create the go routine to listen for re-observation requests
-	common.RunWithScissors(ctx, errC, "fetch_obvs_req", func(ctx context.Context) error {
+	common.RunWithScissors(ctx, errC, "ton_fetch_obvs_req", func(ctx context.Context) error {
 		for {
 			select {
-			case err := <-errC:
-				logger.Error("fetch_obvs_req died", zap.Error(err))
-				return fmt.Errorf("fetch_obvs_req died: %w", err)
 			case <-ctx.Done():
-				logger.Error("fetch_obvs_req context done")
+				logger.Error("ton_fetch_obvs_req context done")
 				return ctx.Err()
+			case err := <-errC:
+				logger.Error("ton_fetch_obvs_req died", zap.Error(err))
+				return fmt.Errorf("ton_fetch_obvs_req died: %w", err)
 			case r := <-e.obsvReqC:
-				if vaa.ChainID(r.ChainId) != e.chainID {
+				if r.ChainId > math.MaxUint16 || vaa.ChainID(r.ChainId) != vaa.ChainIDTon {
 					panic("invalid chain ID")
+				}
+
+				txData, err := e.GetTransactionByReobserveRequest(ctx, r.TxHash)
+				if err != nil {
+					logger.Error("Failed to get transaction by reobserve", zap.Error(err))
+					p2p.DefaultRegistry.AddErrorCount(vaa.ChainIDTon, 1)
+					return fmt.Errorf("Failed to get transaction by reobserve: %w", err)
+				}
+
+				err = e.inspectBody(logger, txData, true)
+				if err != nil {
+					logger.Info("Failed to get transaction by reobserve", zap.Error(err))
 				}
 			}
 		}
@@ -241,16 +187,16 @@ func (e *Watcher) Run(ctx context.Context) error {
 	case err := <-errC:
 		// Close socket(s), if necessary
 		return err
-	} // end select
+	}
 }
 
 func (e *Watcher) GetLastLTFromBlockchain(ctx context.Context) (uint64, error) {
-	block, err := e.Subscriber.tonClient.API.CurrentMasterchainInfo(ctx)
+	block, err := e.Subscriber.tonClient.CurrentMasterchainInfo(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("CurrentMasterchainInfo: %w", err)
 	}
 
-	acc, err := e.Subscriber.tonClient.API.GetAccount(context.Background(), block, &e.contractAddress)
+	acc, err := e.Subscriber.tonClient.GetAccount(context.Background(), block, e.contractAddress)
 	if err != nil {
 		return 0, fmt.Errorf("e.tonClient.GetAccount: %w", err)
 	}
@@ -277,13 +223,13 @@ func (e *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobser
 	}
 
 	observation := &common.MessagePublication{
-		TxID:           tx.Hash,
-		Timestamp:      time.Unix(int64(tx.Now), 0),
-		Nonce:          externalMessageFields.Nonce,
-		Sequence:       externalMessageFields.Sequence,
-		EmitterChain:   e.chainID,
-		EmitterAddress: emitterAddress,
-		//Payload:        externalMessageFields.Payload,
+		TxID:             tx.Hash,
+		Timestamp:        time.Unix(int64(tx.Now), 0),
+		Nonce:            externalMessageFields.Nonce,
+		Sequence:         externalMessageFields.Sequence,
+		EmitterChain:     e.chainID,
+		EmitterAddress:   emitterAddress,
+		Payload:          []byte(externalMessageFields.Payload.String()),
 		ConsistencyLevel: externalMessageFields.ConsistencyLevel,
 		IsReobservation:  isReobservation,
 	}

@@ -15,7 +15,9 @@ import (
 type WatcherConfig struct {
 	NetworkID       watchers.NetworkID // human readable name
 	ChainID         vaa.ChainID        // ChainID
-	ContractAddress string             // hex representation of the contract address
+	Rpc             string
+	ContractAddress string // hex representation of the contract address
+	IsTestnet       bool
 }
 
 func (wc *WatcherConfig) GetNetworkID() watchers.NetworkID {
@@ -40,5 +42,5 @@ func (wc *WatcherConfig) Create(
 		return nil, nil, fmt.Errorf("failed to parse contract address: %w", err)
 	}
 
-	return NewWatcher(wc.ContractAddress, msgC, obsvReqC, wc.ChainID, env).Run, nil, nil
+	return NewWatcher(wc.ChainID, wc.Rpc, wc.IsTestnet, contractAddress, msgC, obsvReqC).Run, nil, nil
 }
