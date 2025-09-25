@@ -4,12 +4,17 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/certusone/wormhole/node/pkg/common"
+	"github.com/certusone/wormhole/node/pkg/p2p"
+	"github.com/certusone/wormhole/node/pkg/watchers"
+	"github.com/wormhole-foundation/wormhole/sdk/vaa"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/liteclient"
 	"github.com/xssnick/tonutils-go/tlb"
 	"github.com/xssnick/tonutils-go/ton"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 	"go.uber.org/zap"
+	"time"
 )
 
 type TxSubscriber struct {
@@ -90,11 +95,85 @@ const (
 // event::message_published#ee3a207e sender:MsgAddressInt sequence:uint64 nonce:uint32 payload:^Cell consistency_level:uint8
 type ExternalMessageModel struct {
 	OPCode           uint32
-	EmitterAddress   address.Address
+	EmitterAddress   *address.Address
 	Sequence         uint64
 	Nonce            uint32
 	Payload          *cell.Cell
 	ConsistencyLevel uint8
+}
+
+func (e *Watcher) GetLastLTFromBlockchain(ctx context.Context) (uint64, error) {
+	block, err := e.Subscriber.tonClient.CurrentMasterchainInfo(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("CurrentMasterchainInfo: %w", err)
+	}
+
+	acc, err := e.Subscriber.tonClient.GetAccount(ctx, block, e.contractAddress)
+	if err != nil {
+		return 0, fmt.Errorf("e.tonClient.GetAccount: %w", err)
+	}
+
+	return acc.LastTxLT, nil
+}
+
+func (e *Watcher) GetLastSeqNoFromBlockchain(ctx context.Context) (uint32, error) {
+	block, err := e.Subscriber.tonClient.CurrentMasterchainInfo(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("CurrentMasterchainInfo: %w", err)
+	}
+
+	return block.SeqNo, nil
+}
+
+func (e *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobservation bool) error {
+	externalMessageFields, err := getExternalMessageFields(tx)
+	if err != nil {
+		logger.Error("failed to unmarshal external message fields", zap.Error(err))
+		p2p.DefaultRegistry.AddErrorCount(vaa.ChainIDTon, 1)
+		return fmt.Errorf("getExternalMessageFields: %w", err)
+	}
+
+	if externalMessageFields.OPCode != OpCodeMessageNeeded {
+		logger.Info("op mismatch", zap.Int("e.OPCodeNeeded", OpCodeMessageNeeded), zap.Int("OPCodeReceived", int(externalMessageFields.OPCode)))
+		return nil
+	}
+
+	emitterAddress, err := vaa.StringToAddress(externalMessageFields.EmitterAddress.String())
+	if err != nil {
+		return fmt.Errorf("vaa.StringToAddress(externalMessageFields.EmitterAddress): %w", err)
+	}
+
+	observation := &common.MessagePublication{
+		TxID:             tx.Hash,
+		Timestamp:        time.Unix(int64(tx.Now), 0),
+		Nonce:            externalMessageFields.Nonce,
+		Sequence:         externalMessageFields.Sequence,
+		EmitterChain:     e.chainID,
+		EmitterAddress:   emitterAddress,
+		Payload:          []byte(externalMessageFields.Payload.String()),
+		ConsistencyLevel: externalMessageFields.ConsistencyLevel,
+		IsReobservation:  isReobservation,
+	}
+
+	messagesConfirmed.Inc()
+	if isReobservation {
+		watchers.ReobservationsByChain.WithLabelValues("ton", "std").Inc()
+	}
+
+	logger.Info("message observed",
+		zap.String("txHash", observation.TxIDString()),
+		zap.Time("timestamp", observation.Timestamp),
+		zap.Uint32("nonce", observation.Nonce),
+		zap.Uint64("sequence", observation.Sequence),
+		zap.Stringer("emitter_chain", observation.EmitterChain),
+		zap.Stringer("emitter_address", observation.EmitterAddress),
+		zap.Binary("payload", observation.Payload),
+		zap.Uint8("consistencyLevel", observation.ConsistencyLevel),
+	)
+
+	e.msgChan <- observation //nolint:channelcheck // The channel to the processor is buffered and shared across chains, if it backs up we should stop processing new observations
+
+	return nil
 }
 
 func getExternalMessageFields(tx *tlb.Transaction) (ExternalMessageModel, error) {
@@ -140,7 +219,7 @@ func getExternalMessageFields(tx *tlb.Transaction) (ExternalMessageModel, error)
 
 	return ExternalMessageModel{
 		OPCode:           uint32(opCode),
-		EmitterAddress:   *emitterAddress,
+		EmitterAddress:   emitterAddress,
 		Sequence:         sequence,
 		Nonce:            uint32(nonce),
 		Payload:          payload,
