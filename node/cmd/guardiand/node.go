@@ -3,6 +3,7 @@ package guardiand
 import (
 	"context"
 	"fmt"
+	"github.com/certusone/wormhole/node/pkg/watchers/tvm"
 	"net"
 	_ "net/http/pprof" // #nosec G108 we are using a custom router (`router := mux.NewRouter()`) and thus not automatically expose pprof.
 	"os"
@@ -295,6 +296,10 @@ var (
 
 	// featureFlags are additional static flags that should be published in P2P heartbeats.
 	featureFlags []string
+
+	tonRPC       *string
+	tonContract  *string
+	tonIsTestnet *bool
 )
 
 func init() {
@@ -526,6 +531,10 @@ func init() {
 	subscribeToVAAs = NodeCmd.Flags().Bool("subscribeToVAAs", false, "Guardiand should subscribe to incoming signed VAAs, set to true if running a public RPC node")
 
 	transferVerifierEnabledChainIDs = NodeCmd.Flags().UintSlice("transferVerifierEnabledChainIDs", make([]uint, 0), "Transfer Verifier will be enabled for these chain IDs (comma-separated)")
+
+	tonRPC = node.RegisterFlagWithValidationOrFail(NodeCmd, "tonRPC", "Ton RPC URL", "http://ton:9000", []string{"http", "https"})
+	tonContract = NodeCmd.Flags().String("tonContract", "", "Ton contract address")
+	tonIsTestnet = NodeCmd.Flags().Bool("tonIsTestnet", true, "Ton testnet flag")
 }
 
 var (
@@ -941,6 +950,10 @@ func runNode(cmd *cobra.Command, args []string) {
 		logger.Fatal("Either --gatewayContract, --gatewayWS and --gatewayLCD must all be set or all unset")
 	}
 
+	if !argsConsistent([]string{*tonRPC, *tonContract}) {
+		logger.Fatal("Either --tonRPC and --tonContract must all be set or all unset")
+	}
+
 	if !*chainGovernorEnabled && *coinGeckoApiKey != "" {
 		logger.Fatal("If coinGeckoApiKey is set, then chainGovernorEnabled must be set")
 	}
@@ -1046,6 +1059,7 @@ func runNode(cmd *cobra.Command, args []string) {
 	rpcMap["xrplevmRPC"] = *xrplEvmRPC
 	rpcMap["plasmaRPC"] = *plasmaRPC
 	rpcMap["creditcoinRPC"] = *creditCoinRPC
+	rpcMap["tonRPC"] = *tonRPC
 
 	// Wormchain is in the 3000 range.
 	rpcMap["wormchainURL"] = *wormchainURL
@@ -1872,6 +1886,18 @@ func runNode(cmd *cobra.Command, args []string) {
 			BlockHeightURL: *ibcBlockHeightURL,
 			Contract:       *ibcContract,
 		}
+	}
+
+	if shouldStart(tonRPC) {
+		wc := &tvm.WatcherConfig{
+			NetworkID:       "ton",
+			ChainID:         vaa.ChainIDTON,
+			Rpc:             *tonRPC,
+			ContractAddress: *tonContract,
+			IsTestnet:       *tonIsTestnet,
+		}
+
+		watcherConfigs = append(watcherConfigs, wc)
 	}
 
 	guardianNode := node.NewGuardianNode(
