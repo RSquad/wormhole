@@ -20,6 +20,7 @@ type Watcher struct {
 	chainID         vaa.ChainID
 	chainRPC        string
 	isTestnet       bool
+	CurrentHeight   uint32
 	contractAddress *address.Address
 	LastProcessedLT uint64                              // Last processed Logical Time (LT) of a transaction
 	msgChan         chan<- *common.MessagePublication   // The following is the channel for emitting observations
@@ -32,6 +33,7 @@ func NewWatcher(
 	chainID vaa.ChainID,
 	chainRPC string,
 	isTestnet bool,
+	lastLT uint64,
 	contractAddress *address.Address,
 	msgChan chan<- *common.MessagePublication,
 	obsvReqC <-chan *gossipv1.ObservationRequest,
@@ -40,6 +42,7 @@ func NewWatcher(
 		chainID:         chainID,
 		chainRPC:        chainRPC,
 		isTestnet:       isTestnet,
+		LastProcessedLT: lastLT,
 		msgChan:         msgChan,
 		obsvReqC:        obsvReqC,
 		contractAddress: contractAddress,
@@ -48,6 +51,8 @@ func NewWatcher(
 }
 
 func (e *Watcher) Run(ctx context.Context) error {
+	var err error
+
 	logger := supervisor.Logger(ctx)
 
 	p2p.DefaultRegistry.SetNetworkStats(e.chainID, &gossipv1.Heartbeat_Network{
@@ -59,29 +64,34 @@ func (e *Watcher) Run(ctx context.Context) error {
 		zap.String("networkID", e.chainID.String()),
 	)
 
-	lt, err := e.GetLastLTFromBlockchain(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get last LT: %w", err)
+	if e.LastProcessedLT == 0 {
+		e.LastProcessedLT, err = e.GetLastLTFromBlockchain(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get last LT: %w", err)
+		}
 	}
 
-	trxChan := make(chan *tlb.Transaction)
+	outChan := make(chan *tlb.Transaction)
 
-	e.Subscriber, err = NewTxSubscriber(e.contractAddress, lt, e.isTestnet, trxChan, logger)
+	e.Subscriber, err = NewTxSubscriber(e.contractAddress, e.LastProcessedLT, e.isTestnet, outChan, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create tx subscriber: %w", err)
 	}
 
-	if err = e.Subscriber.Work(ctx); err != nil {
-		logger.Error("failed to start subscriber", zap.Error(err))
-		return fmt.Errorf("failed to start subscriber: %w", err)
-	}
+	errC := make(chan error)
+
+	go func() {
+		err = e.Subscriber.Work(ctx)
+		if err != nil {
+			logger.Error("failed to start subscriber", zap.Error(err))
+			p2p.DefaultRegistry.AddErrorCount(e.chainID, 1)
+			errC <- err //nolint:channelcheck // The watcher will exit anyway
+		}
+	}()
 
 	//Timer for the get_block_height go routine
 	timer := time.NewTicker(time.Second * 1)
 	defer timer.Stop()
-
-	errC := make(chan error)
-	defer close(errC)
 
 	readiness.SetReady(e.readinessSync)
 
@@ -93,7 +103,8 @@ func (e *Watcher) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				logger.Error("coreEvents context done")
 				return ctx.Err()
-			case msg := <-trxChan:
+			case msg := <-e.Subscriber.outChan:
+				logger.Info("Received msg", zap.Any("msg", msg.Hash))
 				err = e.inspectBody(logger, msg, false)
 				if err != nil {
 					p2p.DefaultRegistry.AddErrorCount(e.chainID, 1)
@@ -123,6 +134,7 @@ func (e *Watcher) Run(ctx context.Context) error {
 						Height:          int64(height),
 						ContractAddress: e.contractAddress.String(),
 					})
+					e.CurrentHeight = height
 				}
 
 				readiness.SetReady(e.readinessSync)
@@ -158,10 +170,8 @@ func (e *Watcher) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		// Close socket(s), if necessary
 		return ctx.Err()
-	case err := <-errC:
-		// Close socket(s), if necessary
+	case err = <-errC:
 		return err
 	}
 }

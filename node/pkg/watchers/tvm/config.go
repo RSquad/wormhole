@@ -42,5 +42,5 @@ func (wc *WatcherConfig) Create(
 		return nil, nil, fmt.Errorf("failed to parse contract address: %w", err)
 	}
 
-	return NewWatcher(wc.ChainID, wc.Rpc, wc.IsTestnet, contractAddress, msgC, obsvReqC).Run, nil, nil
+	return NewWatcher(wc.ChainID, wc.Rpc, wc.IsTestnet, 0, contractAddress, msgC, obsvReqC).Run, nil, nil
 }

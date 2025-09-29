@@ -62,14 +62,13 @@ func (ts *TxSubscriber) Work(ctx context.Context) (err error) {
 
 	defer ts.logFinishWork(err)
 
-	subChan := make(chan *tlb.Transaction)
-	go ts.tonClient.SubscribeOnTransactions(ctx, ts.addr, ts.lt, subChan)
+	go ts.tonClient.SubscribeOnTransactions(ctx, ts.addr, ts.lt, ts.outChan)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case tx, ok := <-subChan:
+		case tx, ok := <-ts.outChan:
 			if !ok {
 				return nil
 			}
@@ -94,6 +93,7 @@ const (
 
 // event::message_published#ee3a207e sender:MsgAddressInt sequence:uint64 nonce:uint32 payload:^Cell consistency_level:uint8
 type ExternalMessageModel struct {
+	TransactionID    []byte
 	OPCode           uint32
 	EmitterAddress   *address.Address
 	Sequence         uint64
@@ -138,13 +138,13 @@ func (e *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobser
 		return nil
 	}
 
-	emitterAddress, err := vaa.StringToAddress(externalMessageFields.EmitterAddress.String())
+	emitterAddress, err := vaa.StringToAddress(hex.EncodeToString(externalMessageFields.EmitterAddress.Data()))
 	if err != nil {
 		return fmt.Errorf("vaa.StringToAddress(externalMessageFields.EmitterAddress): %w", err)
 	}
 
 	observation := &common.MessagePublication{
-		TxID:             tx.Hash,
+		TxID:             externalMessageFields.TransactionID,
 		Timestamp:        time.Unix(int64(tx.Now), 0),
 		Nonce:            externalMessageFields.Nonce,
 		Sequence:         externalMessageFields.Sequence,
@@ -177,11 +177,22 @@ func (e *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobser
 }
 
 func getExternalMessageFields(tx *tlb.Transaction) (ExternalMessageModel, error) {
-	if tx == nil || tx.IO.In == nil || tx.IO.In.AsExternalOut() == nil || tx.IO.In.AsExternalOut().Payload() == nil {
-		return ExternalMessageModel{}, fmt.Errorf("no message body in tx")
+	//ignore such cases
+	if tx == nil || tx.IO.Out == nil {
+		return ExternalMessageModel{}, nil
 	}
 
-	message := tx.IO.In.AsExternalOut().Payload().BeginParse()
+	messages, err := tx.IO.Out.ToSlice()
+	if err != nil {
+		return ExternalMessageModel{}, fmt.Errorf("tx.IO.Out.ToSlice: %w", err)
+	}
+
+	//ignore such cases
+	if len(messages) == 0 {
+		return ExternalMessageModel{}, nil
+	}
+
+	message := messages[0].Msg.Payload().BeginParse()
 
 	opCode, err := message.LoadUInt(32)
 	if err != nil {
@@ -218,6 +229,7 @@ func getExternalMessageFields(tx *tlb.Transaction) (ExternalMessageModel, error)
 	}
 
 	return ExternalMessageModel{
+		TransactionID:    messages[0].Msg.Payload().Hash(),
 		OPCode:           uint32(opCode),
 		EmitterAddress:   emitterAddress,
 		Sequence:         sequence,
