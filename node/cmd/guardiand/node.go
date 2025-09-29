@@ -3,7 +3,6 @@ package guardiand
 import (
 	"context"
 	"fmt"
-	"github.com/certusone/wormhole/node/pkg/watchers/tvm"
 	"net"
 	_ "net/http/pprof" // #nosec G108 we are using a custom router (`router := mux.NewRouter()`) and thus not automatically expose pprof.
 	"os"
@@ -18,6 +17,7 @@ import (
 	"github.com/certusone/wormhole/node/pkg/guardiansigner"
 	"github.com/certusone/wormhole/node/pkg/watchers"
 	"github.com/certusone/wormhole/node/pkg/watchers/ibc"
+	"github.com/certusone/wormhole/node/pkg/watchers/tvm"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/certusone/wormhole/node/pkg/watchers/cosmwasm"

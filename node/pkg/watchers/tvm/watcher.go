@@ -3,6 +3,9 @@ package tvm
 import (
 	"context"
 	"fmt"
+	"math"
+	"time"
+
 	"github.com/certusone/wormhole/node/pkg/common"
 	"github.com/certusone/wormhole/node/pkg/p2p"
 	gossipv1 "github.com/certusone/wormhole/node/pkg/proto/gossip/v1"
@@ -11,9 +14,8 @@ import (
 	"github.com/wormhole-foundation/wormhole/sdk/vaa"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tlb"
+
 	"go.uber.org/zap"
-	"math"
-	"time"
 )
 
 type Watcher struct {

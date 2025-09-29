@@ -3,17 +3,18 @@ package tvm
 import (
 	"context"
 	"encoding/hex"
-	"github.com/certusone/wormhole/node/pkg/supervisor"
-	"github.com/wormhole-foundation/wormhole/sdk/vaa"
-	"github.com/xssnick/tonutils-go/address"
-	"go.uber.org/zap/zaptest"
 	"testing"
 	"time"
 
 	"github.com/certusone/wormhole/node/pkg/common"
 	gossipv1 "github.com/certusone/wormhole/node/pkg/proto/gossip/v1"
+	"github.com/certusone/wormhole/node/pkg/supervisor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wormhole-foundation/wormhole/sdk/vaa"
+	"github.com/xssnick/tonutils-go/address"
+
+	"go.uber.org/zap/zaptest"
 )
 
 const (
