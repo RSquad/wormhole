@@ -297,7 +297,7 @@ var (
 	// featureFlags are additional static flags that should be published in P2P heartbeats.
 	featureFlags []string
 
-	tonRPC       *string
+	tonURL       *string
 	tonContract  *string
 	tonIsTestnet *bool
 )
@@ -532,7 +532,7 @@ func init() {
 
 	transferVerifierEnabledChainIDs = NodeCmd.Flags().UintSlice("transferVerifierEnabledChainIDs", make([]uint, 0), "Transfer Verifier will be enabled for these chain IDs (comma-separated)")
 
-	tonRPC = node.RegisterFlagWithValidationOrFail(NodeCmd, "tonRPC", "Ton RPC URL", "http://ton:9000", []string{"http", "https"})
+	tonURL = node.RegisterFlagWithValidationOrFail(NodeCmd, "tonURL", "Ton  URL", "https://ton.org/global.config.json", []string{"http", "https"})
 	tonContract = NodeCmd.Flags().String("tonContract", "", "Ton contract address")
 	tonIsTestnet = NodeCmd.Flags().Bool("tonIsTestnet", true, "Ton testnet flag")
 }
@@ -950,8 +950,8 @@ func runNode(cmd *cobra.Command, args []string) {
 		logger.Fatal("Either --gatewayContract, --gatewayWS and --gatewayLCD must all be set or all unset")
 	}
 
-	if !argsConsistent([]string{*tonRPC, *tonContract}) {
-		logger.Fatal("Either --tonRPC and --tonContract must all be set or all unset")
+	if !argsConsistent([]string{*tonURL, *tonContract}) {
+		logger.Fatal("Either --tonURL and --tonContract must all be set or all unset")
 	}
 
 	if !*chainGovernorEnabled && *coinGeckoApiKey != "" {
@@ -1059,10 +1059,10 @@ func runNode(cmd *cobra.Command, args []string) {
 	rpcMap["xrplevmRPC"] = *xrplEvmRPC
 	rpcMap["plasmaRPC"] = *plasmaRPC
 	rpcMap["creditcoinRPC"] = *creditCoinRPC
-	rpcMap["tonRPC"] = *tonRPC
 
 	// Wormchain is in the 3000 range.
 	rpcMap["wormchainURL"] = *wormchainURL
+	rpcMap["tonURL"] = *tonURL
 
 	// Generate the IBC chains (3000 range).
 	for _, ibcChain := range ibc.Chains {
@@ -1888,11 +1888,10 @@ func runNode(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	if shouldStart(tonRPC) {
+	if shouldStart(tonURL) {
 		wc := &tvm.WatcherConfig{
 			NetworkID:       "ton",
 			ChainID:         vaa.ChainIDTON,
-			Rpc:             *tonRPC,
 			ContractAddress: *tonContract,
 			IsTestnet:       *tonIsTestnet,
 		}

@@ -20,7 +20,6 @@ import (
 
 type Watcher struct {
 	chainID         vaa.ChainID
-	chainRPC        string
 	isTestnet       bool
 	CurrentHeight   uint32
 	contractAddress *address.Address
@@ -33,7 +32,6 @@ type Watcher struct {
 
 func NewWatcher(
 	chainID vaa.ChainID,
-	chainRPC string,
 	isTestnet bool,
 	lastLT uint64,
 	contractAddress *address.Address,
@@ -42,7 +40,6 @@ func NewWatcher(
 ) *Watcher {
 	return &Watcher{
 		chainID:         chainID,
-		chainRPC:        chainRPC,
 		isTestnet:       isTestnet,
 		LastProcessedLT: lastLT,
 		msgChan:         msgChan,
