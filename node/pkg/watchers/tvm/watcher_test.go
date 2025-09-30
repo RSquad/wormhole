@@ -38,7 +38,7 @@ func TestWatcher_Subscription_Reobservation_Head(t *testing.T) {
 
 	addr := address.MustParseAddr(TestContractAddressRAW)
 
-	w := NewWatcher(cfg.ChainID, cfg.Rpc, cfg.IsTestnet, TestStartLT, addr, msgC, obsvReqC)
+	w := NewWatcher(cfg.ChainID, cfg.IsTestnet, TestStartLT, addr, msgC, obsvReqC)
 
 	rootCtx, cancel := context.WithTimeout(context.Background(), TestTimeout)
 	defer cancel()
