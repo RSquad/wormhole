@@ -3,6 +3,7 @@ package guardiand
 import (
 	"context"
 	"fmt"
+	"github.com/certusone/wormhole/node/pkg/watchers/tvm"
 	"net"
 	_ "net/http/pprof" // #nosec G108 we are using a custom router (`router := mux.NewRouter()`) and thus not automatically expose pprof.
 	"os"
@@ -17,7 +18,6 @@ import (
 	"github.com/certusone/wormhole/node/pkg/guardiansigner"
 	"github.com/certusone/wormhole/node/pkg/watchers"
 	"github.com/certusone/wormhole/node/pkg/watchers/ibc"
-	"github.com/certusone/wormhole/node/pkg/watchers/tvm"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/certusone/wormhole/node/pkg/watchers/cosmwasm"
@@ -240,6 +240,9 @@ var (
 	polygonSepoliaRPC      *string
 	polygonSepoliaContract *string
 
+	tonConfigURL *string
+	tonContract  *string
+
 	logLevel                *string
 	publicRpcLogDetailStr   *string
 	publicRpcLogToTelemetry *bool
@@ -296,10 +299,6 @@ var (
 
 	// featureFlags are additional static flags that should be published in P2P heartbeats.
 	featureFlags []string
-
-	tonURL       *string
-	tonContract  *string
-	tonIsTestnet *bool
 )
 
 func init() {
@@ -532,9 +531,8 @@ func init() {
 
 	transferVerifierEnabledChainIDs = NodeCmd.Flags().UintSlice("transferVerifierEnabledChainIDs", make([]uint, 0), "Transfer Verifier will be enabled for these chain IDs (comma-separated)")
 
-	tonURL = node.RegisterFlagWithValidationOrFail(NodeCmd, "tonURL", "Ton  URL", "https://ton.org/global.config.json", []string{"http", "https"})
+	tonConfigURL = node.RegisterFlagWithValidationOrFail(NodeCmd, "tonConfigURL", "Ton config URL", "https://ton.org/global.config.json", []string{"http", "https"})
 	tonContract = NodeCmd.Flags().String("tonContract", "", "Ton contract address")
-	tonIsTestnet = NodeCmd.Flags().Bool("tonIsTestnet", true, "Ton testnet flag")
 }
 
 var (
@@ -950,8 +948,8 @@ func runNode(cmd *cobra.Command, args []string) {
 		logger.Fatal("Either --gatewayContract, --gatewayWS and --gatewayLCD must all be set or all unset")
 	}
 
-	if !argsConsistent([]string{*tonURL, *tonContract}) {
-		logger.Fatal("Either --tonURL and --tonContract must all be set or all unset")
+	if !argsConsistent([]string{*tonConfigURL, *tonContract}) {
+		logger.Fatal("Either --tonConfigURL and --tonContract must all be set or all unset")
 	}
 
 	if !*chainGovernorEnabled && *coinGeckoApiKey != "" {
@@ -1059,10 +1057,10 @@ func runNode(cmd *cobra.Command, args []string) {
 	rpcMap["xrplevmRPC"] = *xrplEvmRPC
 	rpcMap["plasmaRPC"] = *plasmaRPC
 	rpcMap["creditcoinRPC"] = *creditCoinRPC
+	rpcMap["tonConfigURL"] = *tonConfigURL
 
 	// Wormchain is in the 3000 range.
 	rpcMap["wormchainURL"] = *wormchainURL
-	rpcMap["tonURL"] = *tonURL
 
 	// Generate the IBC chains (3000 range).
 	for _, ibcChain := range ibc.Chains {
@@ -1876,6 +1874,17 @@ func runNode(cmd *cobra.Command, args []string) {
 			watcherConfigs = append(watcherConfigs, wc)
 		}
 
+		if shouldStart(tonConfigURL) {
+			wc := &tvm.WatcherConfig{
+				NetworkID:       "TON",
+				ChainID:         vaa.ChainIDTON,
+				ContractAddress: *tonContract,
+				ConfigURL:       *tonConfigURL,
+			}
+
+			watcherConfigs = append(watcherConfigs, wc)
+		}
+
 	}
 
 	var ibcWatcherConfig *node.IbcWatcherConfig = nil
@@ -1886,17 +1895,6 @@ func runNode(cmd *cobra.Command, args []string) {
 			BlockHeightURL: *ibcBlockHeightURL,
 			Contract:       *ibcContract,
 		}
-	}
-
-	if shouldStart(tonURL) {
-		wc := &tvm.WatcherConfig{
-			NetworkID:       "ton",
-			ChainID:         vaa.ChainIDTON,
-			ContractAddress: *tonContract,
-			IsTestnet:       *tonIsTestnet,
-		}
-
-		watcherConfigs = append(watcherConfigs, wc)
 	}
 
 	guardianNode := node.NewGuardianNode(

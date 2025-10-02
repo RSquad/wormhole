@@ -17,7 +17,7 @@ type WatcherConfig struct {
 	NetworkID       watchers.NetworkID // human readable name
 	ChainID         vaa.ChainID        // ChainID
 	ContractAddress string             // hex representation of the contract address
-	IsTestnet       bool
+	ConfigURL       string
 }
 
 func (wc *WatcherConfig) GetNetworkID() watchers.NetworkID {
@@ -28,7 +28,7 @@ func (wc *WatcherConfig) GetChainID() vaa.ChainID {
 	return wc.ChainID
 }
 
-//nolint:unparam // error is always nil here but the return type is required to satisfy the interface.
+//nolint:unparam // interfaces.Reobserver is always nil here but the return type is required to satisfy the interface.
 func (wc *WatcherConfig) Create(
 	msgC chan<- *common.MessagePublication,
 	obsvReqC <-chan *gossipv1.ObservationRequest,
@@ -42,5 +42,5 @@ func (wc *WatcherConfig) Create(
 		return nil, nil, fmt.Errorf("failed to parse contract address: %w", err)
 	}
 
-	return NewWatcher(wc.ChainID, wc.IsTestnet, 0, contractAddress, msgC, obsvReqC).Run, nil, nil
+	return NewWatcher(wc.ChainID, wc.ConfigURL, 0, contractAddress, msgC, obsvReqC).Run, nil, nil
 }

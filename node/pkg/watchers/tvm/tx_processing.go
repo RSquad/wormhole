@@ -20,37 +20,36 @@ import (
 )
 
 type TxSubscriber struct {
-	tonClient *ton.APIClient
-	addr      *address.Address
-	lt        uint64
-	outChan   chan *tlb.Transaction
-	logger    *zap.Logger
-	isTestnet bool
+	tonClient    *ton.APIClient
+	addr         *address.Address
+	lt           uint64
+	tonConfigURL string
+	outChan      chan *tlb.Transaction
+	logger       *zap.Logger
 }
 
 func NewTxSubscriber(
 	addr *address.Address,
 	lt uint64,
-	isTestnet bool,
+	tonConfigURL string,
 	outChan chan *tlb.Transaction,
 	logger *zap.Logger,
 ) (*TxSubscriber, error) {
-	configURL := getConfigURL(isTestnet)
-
 	pool := liteclient.NewConnectionPool()
 
-	err := pool.AddConnectionsFromConfigUrl(context.Background(), configURL)
+	err := pool.AddConnectionsFromConfigUrl(context.Background(), tonConfigURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load config from `%s`: %v", configURL, err)
+		return nil, fmt.Errorf("failed to load config from `%s`: %v", tonConfigURL, err)
 	}
 
 	api := ton.NewAPIClient(pool).WithRetry(5)
 	return &TxSubscriber{
-		tonClient: api.(*ton.APIClient),
-		addr:      addr,
-		lt:        lt,
-		outChan:   outChan,
-		logger:    logger,
+		tonClient:    api.(*ton.APIClient),
+		addr:         addr,
+		lt:           lt,
+		tonConfigURL: tonConfigURL,
+		outChan:      outChan,
+		logger:       logger,
 	}, nil
 }
 
@@ -70,31 +69,16 @@ func (ts *TxSubscriber) Work(ctx context.Context) (err error) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case tx, ok := <-ts.outChan:
-			if !ok {
-				return nil
-			}
-
-			ts.logger.Info("Received transaction",
-				zap.String("chainID", ts.addr.String()),
-				zap.String("component", "TxSubscriber"),
-				zap.String("address", ts.addr.String()),
-				zap.String("tx_hash", hex.EncodeToString(tx.Hash)),
-			)
-
-			ts.outChan <- tx
 		}
 	}
 }
 
 const (
-	MainnetConfigURL    = "https://ton.org/global.config.json"
-	TestnetConfigURL    = "https://ton.org/testnet-global.config.json"
-	OpCodeMessageNeeded = 0xee3a207e
+	OpcodeMessagePublished = 0xee3a207e
 )
 
 // event::message_published#ee3a207e sender:MsgAddressInt sequence:uint64 nonce:uint32 payload:^Cell consistency_level:uint8
-type ExternalMessageModel struct {
+type MessagePublishedEvent struct {
 	TransactionID    []byte
 	OPCode           uint32
 	EmitterAddress   *address.Address
@@ -104,22 +88,22 @@ type ExternalMessageModel struct {
 	ConsistencyLevel uint8
 }
 
-func (e *Watcher) GetLastLTFromBlockchain(ctx context.Context) (uint64, error) {
-	block, err := e.Subscriber.tonClient.CurrentMasterchainInfo(ctx)
+func (w *Watcher) GetCoreAccountLastLT(ctx context.Context) (uint64, error) {
+	block, err := w.Subscriber.tonClient.CurrentMasterchainInfo(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("CurrentMasterchainInfo: %w", err)
 	}
 
-	acc, err := e.Subscriber.tonClient.GetAccount(ctx, block, e.contractAddress)
+	acc, err := w.Subscriber.tonClient.GetAccount(ctx, block, w.contractAddress)
 	if err != nil {
-		return 0, fmt.Errorf("e.tonClient.GetAccount: %w", err)
+		return 0, fmt.Errorf("w.tonClient.GetAccount: %w", err)
 	}
 
 	return acc.LastTxLT, nil
 }
 
-func (e *Watcher) GetLastSeqNoFromBlockchain(ctx context.Context) (uint32, error) {
-	block, err := e.Subscriber.tonClient.CurrentMasterchainInfo(ctx)
+func (w *Watcher) GetLastMasterchainBlockSeqno(ctx context.Context) (uint32, error) {
+	block, err := w.Subscriber.tonClient.CurrentMasterchainInfo(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("CurrentMasterchainInfo: %w", err)
 	}
@@ -127,122 +111,133 @@ func (e *Watcher) GetLastSeqNoFromBlockchain(ctx context.Context) (uint32, error
 	return block.SeqNo, nil
 }
 
-func (e *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobservation bool) error {
-	externalMessageFields, err := getExternalMessageFields(tx)
+func (w *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobservation bool) error {
+	messagePublishEvents, err := w.findMessagePublishedEvents(tx)
 	if err != nil {
-		logger.Error("failed to unmarshal external message fields", zap.Error(err))
+		logger.Error("failed to unmarshal message publish events", zap.Error(err))
 		p2p.DefaultRegistry.AddErrorCount(vaa.ChainIDTON, 1)
-		return fmt.Errorf("getExternalMessageFields: %w", err)
+		return fmt.Errorf("findMessagePublishedEvent: %w", err)
 	}
 
-	if externalMessageFields.OPCode != OpCodeMessageNeeded {
-		logger.Info("op mismatch", zap.Int("e.OPCodeNeeded", OpCodeMessageNeeded), zap.Int("OPCodeReceived", int(externalMessageFields.OPCode)))
-		return nil
+	if messagePublishEvents != nil {
+		for _, messagePublishEvent := range messagePublishEvents {
+			emitterAddress, err := vaa.StringToAddress(hex.EncodeToString(messagePublishEvent.EmitterAddress.Data()))
+			if err != nil {
+				return fmt.Errorf("vaa.StringToAddress(messagePublishEvent.EmitterAddress): %w", err)
+			}
+
+			observation := &common.MessagePublication{
+				TxID:             messagePublishEvent.TransactionID,
+				Timestamp:        time.Unix(int64(tx.Now), 0),
+				Nonce:            messagePublishEvent.Nonce,
+				Sequence:         messagePublishEvent.Sequence,
+				EmitterChain:     w.chainID,
+				EmitterAddress:   emitterAddress,
+				Payload:          []byte(messagePublishEvent.Payload.String()),
+				ConsistencyLevel: messagePublishEvent.ConsistencyLevel,
+				IsReobservation:  isReobservation,
+			}
+
+			// messagesConfirmed.Inc() // TODO: Fix prometheus metric
+			if isReobservation {
+				watchers.ReobservationsByChain.WithLabelValues("ton", "std").Inc()
+			}
+
+			logger.Info("🔥 TON MESSAGE OBSERVED 🔥",
+				zap.String("txHash", observation.TxIDString()),
+				zap.Time("timestamp", observation.Timestamp),
+				zap.Uint32("nonce", observation.Nonce),
+				zap.Uint64("sequence", observation.Sequence),
+				zap.Stringer("emitter_chain", observation.EmitterChain),
+				zap.Stringer("emitter_address", observation.EmitterAddress),
+				zap.String("payload_hex", hex.EncodeToString(observation.Payload)),
+				zap.Uint8("consistencyLevel", observation.ConsistencyLevel),
+				zap.Bool("is_reobservation", isReobservation),
+			)
+
+			w.msgChan <- observation //nolint:channelcheck // The channel to the processor is buffered and shared across chains, if it backs up we should stop processing new observations
+		}
 	}
-
-	emitterAddress, err := vaa.StringToAddress(hex.EncodeToString(externalMessageFields.EmitterAddress.Data()))
-	if err != nil {
-		return fmt.Errorf("vaa.StringToAddress(externalMessageFields.EmitterAddress): %w", err)
-	}
-
-	observation := &common.MessagePublication{
-		TxID:             externalMessageFields.TransactionID,
-		Timestamp:        time.Unix(int64(tx.Now), 0),
-		Nonce:            externalMessageFields.Nonce,
-		Sequence:         externalMessageFields.Sequence,
-		EmitterChain:     e.chainID,
-		EmitterAddress:   emitterAddress,
-		Payload:          []byte(externalMessageFields.Payload.String()),
-		ConsistencyLevel: externalMessageFields.ConsistencyLevel,
-		IsReobservation:  isReobservation,
-	}
-
-	messagesConfirmed.Inc()
-	if isReobservation {
-		watchers.ReobservationsByChain.WithLabelValues("ton", "std").Inc()
-	}
-
-	logger.Info("message observed",
-		zap.String("txHash", observation.TxIDString()),
-		zap.Time("timestamp", observation.Timestamp),
-		zap.Uint32("nonce", observation.Nonce),
-		zap.Uint64("sequence", observation.Sequence),
-		zap.Stringer("emitter_chain", observation.EmitterChain),
-		zap.Stringer("emitter_address", observation.EmitterAddress),
-		zap.Binary("payload", observation.Payload),
-		zap.Uint8("consistencyLevel", observation.ConsistencyLevel),
-	)
-
-	e.msgChan <- observation //nolint:channelcheck // The channel to the processor is buffered and shared across chains, if it backs up we should stop processing new observations
 
 	return nil
 }
 
-func getExternalMessageFields(tx *tlb.Transaction) (ExternalMessageModel, error) {
+func (w *Watcher) findMessagePublishedEvents(tx *tlb.Transaction) ([]*MessagePublishedEvent, error) {
 	//ignore such cases
 	if tx == nil || tx.IO.Out == nil {
-		return ExternalMessageModel{}, nil
+		return nil, nil
 	}
 
 	messages, err := tx.IO.Out.ToSlice()
 	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("tx.IO.Out.ToSlice: %w", err)
+		return nil, fmt.Errorf("tx.IO.Out.ToSlice: %w", err)
 	}
 
 	//ignore such cases
 	if len(messages) == 0 {
-		return ExternalMessageModel{}, nil
+		return nil, nil
+	}
+	externalMessages := make([]*MessagePublishedEvent, 0)
+
+	fmt.Println(len(messages))
+	for _, msg := range messages {
+		extMsg := msg.AsExternalOut()
+		if extMsg != nil {
+			msgBody := extMsg.Payload().BeginParse()
+			opcode, err := msgBody.LoadUInt(32)
+			if err != nil {
+				continue
+			}
+			if opcode != OpcodeMessagePublished {
+				continue
+			}
+
+			emitterAddress, err := msgBody.LoadAddr()
+			if err != nil {
+				return nil, fmt.Errorf("failed to load emitter address")
+			}
+
+			if emitterAddress == nil {
+				return nil, fmt.Errorf("emitter address is nil")
+			}
+
+			sequence, err := msgBody.LoadUInt(64)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load sequence")
+			}
+
+			nonce, err := msgBody.LoadUInt(32)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load nonce")
+			}
+
+			payload, err := msgBody.LoadRefCell()
+			if err != nil {
+				return nil, fmt.Errorf("failed to load payload")
+			}
+
+			consistencyLevel, err := msgBody.LoadUInt(8)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load consistency_level")
+			}
+
+			externalMessages = append(externalMessages, &MessagePublishedEvent{
+				TransactionID:    extMsg.Payload().Hash(),
+				OPCode:           uint32(opcode),
+				EmitterAddress:   emitterAddress,
+				Sequence:         sequence,
+				Nonce:            uint32(nonce),
+				Payload:          payload,
+				ConsistencyLevel: uint8(consistencyLevel),
+			})
+		}
 	}
 
-	message := messages[0].Msg.Payload().BeginParse()
-
-	opCode, err := message.LoadUInt(32)
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load opcode")
-	}
-
-	emitterAddress, err := message.LoadAddr()
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load emitter address")
-	}
-
-	if emitterAddress == nil {
-		return ExternalMessageModel{}, fmt.Errorf("emitter address is nil")
-	}
-
-	sequence, err := message.LoadUInt(64)
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load sequence")
-	}
-
-	nonce, err := message.LoadUInt(32)
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load nonce")
-	}
-
-	payload, err := message.LoadRefCell()
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load payload")
-	}
-
-	consistencyLevel, err := message.LoadUInt(8)
-	if err != nil {
-		return ExternalMessageModel{}, fmt.Errorf("failed to load consistency_level")
-	}
-
-	return ExternalMessageModel{
-		TransactionID:    messages[0].Msg.Payload().Hash(),
-		OPCode:           uint32(opCode),
-		EmitterAddress:   emitterAddress,
-		Sequence:         sequence,
-		Nonce:            uint32(nonce),
-		Payload:          payload,
-		ConsistencyLevel: uint8(consistencyLevel),
-	}, nil
+	return externalMessages, nil
 }
 
-func (e *Watcher) GetTransactionByReobserveRequest(ctx context.Context, txHash []byte) (*tlb.Transaction, error) {
-	tx, err := e.Subscriber.tonClient.FindLastTransactionByOutMsgHash(ctx, e.contractAddress, txHash)
+func (w *Watcher) GetTransactionByReobserveRequest(ctx context.Context, txHash []byte) (*tlb.Transaction, error) {
+	tx, err := w.Subscriber.tonClient.FindLastTransactionByOutMsgHash(ctx, w.contractAddress, txHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find last transaction by out message hash: %w", err)
 	}
@@ -265,12 +260,4 @@ func (ts *TxSubscriber) logFinishWork(err error) {
 			zap.String("addr", ts.addr.String()),
 		)
 	}
-}
-
-func getConfigURL(isTestnet bool) string {
-	if isTestnet {
-		return TestnetConfigURL
-	}
-
-	return MainnetConfigURL
 }

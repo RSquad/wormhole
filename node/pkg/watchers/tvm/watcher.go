@@ -2,6 +2,7 @@ package tvm
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"time"
@@ -20,7 +21,7 @@ import (
 
 type Watcher struct {
 	chainID         vaa.ChainID
-	isTestnet       bool
+	tonConfigURL    string
 	CurrentHeight   uint32
 	contractAddress *address.Address
 	LastProcessedLT uint64                              // Last processed Logical Time (LT) of a transaction
@@ -32,7 +33,7 @@ type Watcher struct {
 
 func NewWatcher(
 	chainID vaa.ChainID,
-	isTestnet bool,
+	tonConfigURL string,
 	lastLT uint64,
 	contractAddress *address.Address,
 	msgChan chan<- *common.MessagePublication,
@@ -40,7 +41,7 @@ func NewWatcher(
 ) *Watcher {
 	return &Watcher{
 		chainID:         chainID,
-		isTestnet:       isTestnet,
+		tonConfigURL:    tonConfigURL,
 		LastProcessedLT: lastLT,
 		msgChan:         msgChan,
 		obsvReqC:        obsvReqC,
@@ -49,41 +50,41 @@ func NewWatcher(
 	}
 }
 
-func (e *Watcher) Run(ctx context.Context) error {
+func (w *Watcher) Run(ctx context.Context) error {
 	var err error
 
 	logger := supervisor.Logger(ctx)
 
-	p2p.DefaultRegistry.SetNetworkStats(e.chainID, &gossipv1.Heartbeat_Network{
-		ContractAddress: e.contractAddress.String(),
+	p2p.DefaultRegistry.SetNetworkStats(w.chainID, &gossipv1.Heartbeat_Network{
+		ContractAddress: w.contractAddress.String(),
 	})
 
 	logger.Info("Starting watcher",
 		zap.String("watcher_name", "ton"),
-		zap.String("networkID", e.chainID.String()),
+		zap.String("networkID", w.chainID.String()),
 	)
 
-	if e.LastProcessedLT == 0 {
-		e.LastProcessedLT, err = e.GetLastLTFromBlockchain(ctx)
+	outChan := make(chan *tlb.Transaction)
+
+	w.Subscriber, err = NewTxSubscriber(w.contractAddress, w.LastProcessedLT, w.tonConfigURL, outChan, logger)
+	if err != nil {
+		return fmt.Errorf("failed to create tx subscriber: %w", err)
+	}
+
+	if w.LastProcessedLT == 0 {
+		w.LastProcessedLT, err = w.GetCoreAccountLastLT(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get last LT: %w", err)
 		}
 	}
 
-	outChan := make(chan *tlb.Transaction)
-
-	e.Subscriber, err = NewTxSubscriber(e.contractAddress, e.LastProcessedLT, e.isTestnet, outChan, logger)
-	if err != nil {
-		return fmt.Errorf("failed to create tx subscriber: %w", err)
-	}
-
 	errC := make(chan error)
 
 	go func() {
-		err = e.Subscriber.Work(ctx)
+		err = w.Subscriber.Work(ctx)
 		if err != nil {
 			logger.Error("failed to start subscriber", zap.Error(err))
-			p2p.DefaultRegistry.AddErrorCount(e.chainID, 1)
+			p2p.DefaultRegistry.AddErrorCount(w.chainID, 1)
 			errC <- err //nolint:channelcheck // The watcher will exit anyway
 		}
 	}()
@@ -92,7 +93,7 @@ func (e *Watcher) Run(ctx context.Context) error {
 	timer := time.NewTicker(time.Second * 1)
 	defer timer.Stop()
 
-	readiness.SetReady(e.readinessSync)
+	readiness.SetReady(w.readinessSync)
 
 	supervisor.Signal(ctx, supervisor.SignalHealthy)
 
@@ -102,11 +103,18 @@ func (e *Watcher) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				logger.Error("coreEvents context done")
 				return ctx.Err()
-			case msg := <-e.Subscriber.outChan:
-				logger.Info("Received msg", zap.Any("msg", msg.Hash))
-				err = e.inspectBody(logger, msg, false)
+			case msg := <-w.Subscriber.outChan:
+				logger.Info("TON transaction received",
+					zap.String("chainID", w.chainID.String()),
+					zap.String("component", "TxSubscriber"),
+					zap.String("address", string(msg.AccountAddr)),
+					zap.String("tx_hash", hex.EncodeToString(msg.Hash)),
+					zap.Uint64("lt", msg.LT),
+					zap.Uint32("now", msg.Now),
+				)
+				err = w.inspectBody(logger, msg, false)
 				if err != nil {
-					p2p.DefaultRegistry.AddErrorCount(e.chainID, 1)
+					p2p.DefaultRegistry.AddErrorCount(w.chainID, 1)
 					errC <- err //nolint:channelcheck // The watcher will exit anyway
 					return err
 				}
@@ -122,21 +130,21 @@ func (e *Watcher) Run(ctx context.Context) error {
 				return ctx.Err()
 
 			case <-timer.C:
-				height, err := e.GetLastSeqNoFromBlockchain(ctx)
+				height, err := w.GetLastMasterchainBlockSeqno(ctx)
 				if err != nil {
 					logger.Error("Failed to get latest seqno", zap.Error(err))
 				} else {
-					currentHeight.Set(float64(height))
+					// currentHeight.Set(float64(height)) // TODO: Fix prometheus metric
 					logger.Debug("ton_getLatestSeqno", zap.Int64("result", int64(height)))
 
-					p2p.DefaultRegistry.SetNetworkStats(e.chainID, &gossipv1.Heartbeat_Network{
+					p2p.DefaultRegistry.SetNetworkStats(w.chainID, &gossipv1.Heartbeat_Network{
 						Height:          int64(height),
-						ContractAddress: e.contractAddress.String(),
+						ContractAddress: w.contractAddress.String(),
 					})
-					e.CurrentHeight = height
+					w.CurrentHeight = height
 				}
 
-				readiness.SetReady(e.readinessSync)
+				readiness.SetReady(w.readinessSync)
 			}
 		}
 	})
@@ -147,19 +155,19 @@ func (e *Watcher) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				logger.Error("ton_fetch_obvs_req context done")
 				return ctx.Err()
-			case r := <-e.obsvReqC:
+			case r := <-w.obsvReqC:
 				if r.ChainId > math.MaxUint16 || vaa.ChainID(r.ChainId) != vaa.ChainIDTON {
 					panic("invalid chain ID")
 				}
 
-				txData, err := e.GetTransactionByReobserveRequest(ctx, r.TxHash)
+				txData, err := w.GetTransactionByReobserveRequest(ctx, r.TxHash)
 				if err != nil {
 					logger.Error("Failed to get transaction by reobserve", zap.Error(err))
 					p2p.DefaultRegistry.AddErrorCount(vaa.ChainIDTON, 1)
 					return fmt.Errorf("failed to get transaction by reobserve: %w", err)
 				}
 
-				err = e.inspectBody(logger, txData, true)
+				err = w.inspectBody(logger, txData, true)
 				if err != nil {
 					logger.Info("ton_fetch_obvs_req skipping event data in result", zap.Error(err))
 				}

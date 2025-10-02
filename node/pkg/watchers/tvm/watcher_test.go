@@ -32,13 +32,13 @@ func TestWatcher_Subscription_Reobservation_Head(t *testing.T) {
 	cfg := WatcherConfig{
 		NetworkID:       "ton-testnet",
 		ChainID:         vaa.ChainIDTON,
-		IsTestnet:       true,
+		ConfigURL:       "https://ton.org/testnet-global.config.json",
 		ContractAddress: TestContractAddressRAW,
 	}
 
 	addr := address.MustParseAddr(TestContractAddressRAW)
 
-	w := NewWatcher(cfg.ChainID, cfg.IsTestnet, TestStartLT, addr, msgC, obsvReqC)
+	w := NewWatcher(cfg.ChainID, cfg.ConfigURL, TestStartLT, addr, msgC, obsvReqC)
 
 	rootCtx, cancel := context.WithTimeout(context.Background(), TestTimeout)
 	defer cancel()
