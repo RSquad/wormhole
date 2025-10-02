@@ -1,6 +1,6 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { Cell, toNano, beginCell, Dictionary } from '@ton/core';
-import { Wormhole, GuardianSetValue, Events, SignatureDictionaryValue } from '../wrappers/Wormhole';
+import { Wormhole, GuardianSetDictionaryValue, Events, SignatureDictionaryValue } from '../wrappers/Wormhole';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import { makeRandomKeyPair, toXOnly } from './TestUtils';
@@ -53,7 +53,7 @@ describe('Wormhole', () => {
 
         const publicKeys = keys.map((key) => toXOnly(key.keyPair.publicKey as Buffer));
 
-        const guardianSets = Dictionary.empty(Dictionary.Keys.Uint(8), GuardianSetValue);
+        const guardianSets = Dictionary.empty(Dictionary.Keys.Uint(8), GuardianSetDictionaryValue);
         guardianSets.set(0, { keys: publicKeys, expirationTime: Math.floor(Date.now() / 1000) + 60 });
         wormhole = blockchain.openContract(
             Wormhole.createFromConfig(

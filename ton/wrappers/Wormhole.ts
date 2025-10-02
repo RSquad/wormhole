@@ -35,7 +35,7 @@ export type WormholeConfig = {
     id: number; // unique contract ID
 };
 
-export const GuardianSetValue = {
+export const GuardianSetDictionaryValue = {
     serialize: (src: GuardianSet, builder: Builder) => {
         const keysDict = Dictionary.empty(Dictionary.Keys.Uint(8), Dictionary.Values.Buffer(32));
         src.keys.forEach((key, index) => {
@@ -72,7 +72,7 @@ export function wormholeConfigToCell(config: WormholeConfig): Cell {
     return beginCell()
         .storeUint(config.messageFee, 64)
         .storeDict(config.sequences, Dictionary.Keys.Address(), Dictionary.Values.Uint(64))
-        .storeDict(config.guardianSets, Dictionary.Keys.Uint(32), GuardianSetValue)
+        .storeDict(config.guardianSets, Dictionary.Keys.Uint(32), GuardianSetDictionaryValue)
         .storeUint(config.guardianSetIndex, 32)
         .storeUint(config.guardianSetExpiry, 32)
         .storeUint(config.chainId, 16)
