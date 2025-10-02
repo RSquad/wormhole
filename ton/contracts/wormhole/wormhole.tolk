@@ -10,13 +10,13 @@ import "messages";
 // this struct defines storage layout of the contract
 struct Storage {
     messageFee: uint64
-    chainId: uint16
-    governanceChainId: uint16
-    governanceContract: uint256
+    sequences: map<address, uint64>
     guardianSets: map<uint32, GuardianSet>
     guardianSetIndex: uint32
     guardianSetExpiry: uint32
-    sequences: map<address, uint64>
+    chainId: uint16
+    governanceChainId: uint16
+    governanceContract: uint256
     id: uint16 // unique contract ID
 }
 
@@ -67,18 +67,18 @@ fun quorum(numGuardians: uint8): uint8 {
 }
 
 @inline
-fun onParseAndVerifyVM(sender: address, msgValue: coins, params: ParseAndVerifyVM) {
+fun onParseAndVerifyVM(params: ParseAndVerifyVM) {
     var storage = lazy Storage.load();
     val (vm, vmHash) = VM.parse(params.encodedVM);
-
     val value = storage.guardianSets.get(vm.guardianSetIndex);
     assert(value.isFound) throw ERROR_INVALID_GUARDIAN_SET;
     val guardianSet = value.loadValue();
-    assert (vm.guardianSetIndex == storage.guardianSetIndex || guardianSet.expirationTime >= blockchain.now()) throw ERROR_GUARDIAN_SET_EXPIRED;
-
+    assert (
+        vm.guardianSetIndex == storage.guardianSetIndex || 
+        guardianSet.expirationTime >= blockchain.now()
+    ) throw ERROR_GUARDIAN_SET_EXPIRED;
     assert (vm.signaturesCount >= quorum(guardianSet.count)) throw ERROR_NO_QUORUM;
-    
-    val signaturesValid = verifyVmSignatures(vmHash, storage.guardianSets.get(vm.guardianSetIndex).loadValue(), vm.signatures);
+    val signaturesValid = verifyVmSignatures(vmHash, guardianSet, vm.signatures);
     assert(signaturesValid) throw ERROR_INVALID_VM_SIGNATURES;
 }
 
@@ -94,7 +94,7 @@ fun onInternalMessage(in: InMessage) {
             sendChange(in.senderAddress, OP_PUBLISH_MESSAGE, msg.queryId, msg.tail);
         }
         ParseAndVerifyVM => {
-            onParseAndVerifyVM(in.senderAddress, in.valueCoins, msg);
+            onParseAndVerifyVM(msg);
             sendChange(in.senderAddress, OP_PARSE_AND_VERIFY_VM, msg.queryId, true);
         }
         else => {
@@ -108,11 +108,11 @@ fun onInternalMessage(in: InMessage) {
 fun onBouncedMessage(in: InMessageBounced) {
 }
 
-// get methods are a means to conveniently read contract data using, for example, HTTP APIs
-// note that unlike in many other smart contract VMs, get methods cannot be called by other contracts
 get fun verifyVM(vmCell: cell): bool {
-    val vm: VM = VM.fromCell(vmCell);
-    return true;
+    val storage = lazy Storage.load();
+    val (vm, vmHash) = VM.parse(vmCell);
+    val signaturesValid = verifyVmSignatures(vmHash, storage.guardianSets.get(vm.guardianSetIndex).loadValue(), vm.signatures);
+    return signaturesValid;
 }
 
 get fun messageFee(): int {

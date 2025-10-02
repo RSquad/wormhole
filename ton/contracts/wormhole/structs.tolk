@@ -3,7 +3,7 @@ import "../libraries/errors";
 const VERSION = 1;
 
 struct GuardianSet {
-    keys: map<uint8, address>
+    keys: map<uint8, uint256>
     count: uint8
     expirationTime: uint32
 }
@@ -34,7 +34,7 @@ fun VM.parse(c: cell): (VM, uint256) {
     val signaturesCount = cs.loadUint(8);
     val signatures: map<uint8, Signature> = createMapFromLowLevelDict(cs.loadDict());
     val hash = cs.hash();
-    return (VM{
+    val vm = VM{
         version: version,
         guardianSetIndex: guardianSetIndex,
         signatures: signatures,
@@ -46,7 +46,9 @@ fun VM.parse(c: cell): (VM, uint256) {
         sequence: cs.loadUint(64),
         consistencyLevel: cs.loadUint(8),
         payload: cs.loadRef(),
-    }, hash);
+    };
+    cs.assertEnd();
+    return (vm, hash);
 }
 
 fun VM.hash(self): uint256 {

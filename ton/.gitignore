@@ -24,3 +24,9 @@ Session.vim
 
 # tolk builtin stdlib
 .stdlib
+
+# test coverage artifacts
+coverage
+
+# gas snapshots
+.snapshot
