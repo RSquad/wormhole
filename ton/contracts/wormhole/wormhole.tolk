@@ -1,13 +1,27 @@
-tolk 1.0
+tolk 1.1
+
+import "../libraries/errors";
+import "../libraries/tonmsg";
+import "events";
+import "structs";
+import "opcodes";
+import "messages";
 
 // this struct defines storage layout of the contract
 struct Storage {
-    id: uint32  // required to allow multiple independent counter instances, since the contract address depends on its initial state
-    counter: uint32 // the current counter value
+    messageFee: uint64
+    chainId: uint16
+    governanceChainId: uint16
+    governanceContract: uint256
+    guardianSets: map<uint32, GuardianSet>
+    guardianSetIndex: uint32
+    guardianSetExpiry: uint32
+    sequences: map<address, uint64>
+    id: uint16 // unique contract ID
 }
 
 // load contract data from the persistent storage
-fun Storage.load() {
+fun Storage.load(): Storage {
     return Storage.fromCell(contract.getData())
 }
 
@@ -16,44 +30,76 @@ fun Storage.save(self) {
     contract.setData(self.toCell())
 }
 
-// the struct uses a 32-bit opcode prefix for message identification
-struct (0x7e8764ef) IncreaseCounter {
-    queryId: uint64  // query id, typically included in messages
-    increaseBy: uint32
+@inline
+fun Storage.useSequence(mutate self, sender: address): uint64 {
+    val sequence = self.sequences.get(sender);
+    if (sequence.isFound) {
+        self.sequences.set(sender, sequence.loadValue() + 1);
+        return sequence.loadValue();
+    } else {
+        self.sequences.set(sender, 1);
+        return 0;
+    }
 }
 
-struct (0x3a752f06) ResetCounter {
-    queryId: uint64
+type AllowedMessage = PublishMessage | ParseAndVerifyVM
+
+@inline
+fun onPublishMessage(sender: address, msgValue: coins, params: PublishMessage) {
+    var storage = lazy Storage.load();
+    assert(msgValue > storage.messageFee) throw ERROR_INSUFFICIENT_FEE;
+
+    val sequence = storage.useSequence(sender);
+
+    val event = PublishMessageEvent {
+        sender: sender,
+        sequence: sequence,
+        nonce: params.nonce,
+        consistencyLevel: params.consistencyLevel,
+        payload: params.payload
+    };
+    emit(event);
 }
 
-// using unions to represent available messages
-// this allows processing them with pattern matching
-type AllowedMessage = IncreaseCounter | ResetCounter
+@inline
+fun quorum(numGuardians: uint8): uint8 {
+    return ((numGuardians * 2) / 3) + 1;
+}
 
-// the main entrypoint: called when a contract receives an message from other contracts
+@inline
+fun onParseAndVerifyVM(sender: address, msgValue: coins, params: ParseAndVerifyVM) {
+    var storage = lazy Storage.load();
+    val (vm, vmHash) = VM.parse(params.encodedVM);
+
+    val value = storage.guardianSets.get(vm.guardianSetIndex);
+    assert(value.isFound) throw ERROR_INVALID_GUARDIAN_SET;
+    val guardianSet = value.loadValue();
+    assert (vm.guardianSetIndex == storage.guardianSetIndex || guardianSet.expirationTime >= blockchain.now()) throw ERROR_GUARDIAN_SET_EXPIRED;
+
+    assert (vm.signaturesCount >= quorum(guardianSet.count)) throw ERROR_NO_QUORUM;
+    
+    val signaturesValid = verifyVmSignatures(vmHash, storage.guardianSets.get(vm.guardianSetIndex).loadValue(), vm.signatures);
+    assert(signaturesValid) throw ERROR_INVALID_VM_SIGNATURES;
+}
+
+// the main entrypoint: called when a contract receives 
+// internal messages from other contracts
 fun onInternalMessage(in: InMessage) {
     // use `lazy` to defer loading fields until they are accessed
     val msg = lazy AllowedMessage.fromSlice(in.body);
 
     match (msg) {
-        IncreaseCounter => {
-            // load contract storage lazily (efficient for large or partial reads/updates)
-            var storage = lazy Storage.load();
-
-            storage.counter += msg.increaseBy;
-            storage.save();
+        PublishMessage => {
+            onPublishMessage(in.senderAddress, in.valueCoins, msg);
+            sendChange(in.senderAddress, OP_PUBLISH_MESSAGE, msg.queryId, msg.tail);
         }
-
-        ResetCounter => {
-            var storage = lazy Storage.load();
-
-            storage.counter = 0;
-            storage.save();
+        ParseAndVerifyVM => {
+            onParseAndVerifyVM(in.senderAddress, in.valueCoins, msg);
+            sendChange(in.senderAddress, OP_PARSE_AND_VERIFY_VM, msg.queryId, true);
         }
-
         else => {
             // ignore empty messages, "wrong opcode" for others
-            assert (in.body.isEmpty()) throw 0xFFFF
+            assert (in.body.isEmpty()) throw ERROR_UNKNOWN_OPCODE;
         }
     }
 }
@@ -64,12 +110,12 @@ fun onBouncedMessage(in: InMessageBounced) {
 
 // get methods are a means to conveniently read contract data using, for example, HTTP APIs
 // note that unlike in many other smart contract VMs, get methods cannot be called by other contracts
-get fun currentCounter(): int {
-    val storage = lazy Storage.load();
-    return storage.counter;
+get fun verifyVM(vmCell: cell): bool {
+    val vm: VM = VM.fromCell(vmCell);
+    return true;
 }
 
-get fun initialId(): int {
+get fun messageFee(): int {
     val storage = lazy Storage.load();
-    return storage.id;
+    return storage.messageFee;
 }

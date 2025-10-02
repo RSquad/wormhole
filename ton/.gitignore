@@ -21,3 +21,6 @@ Session.vim
 .nvim/
 .emacs/
 .helix/
+
+# tolk builtin stdlib
+.stdlib
