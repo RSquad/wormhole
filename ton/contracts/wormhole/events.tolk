@@ -5,6 +5,6 @@ struct (0x50ACEA3E) PublishMessageEvent {
     sender: address
     sequence: uint64
     nonce: uint32
-    consistencyLevel: uint8
     payload: cell
+    consistencyLevel: uint8
 }
