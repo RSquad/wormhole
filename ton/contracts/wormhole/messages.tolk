@@ -20,10 +20,13 @@ struct (0x9CE51423) PublishMessageAnswer {
 struct (0x051679D3) ParseAndVerifyVM {
     queryId: uint64
     encodedVM: cell
+    tail: cell
 }
 
 // opcode = OP_PARSE_AND_VERIFY_VM | ANSWER_BIT
 struct (0x851679D3) ParseAndVerifyVMAnswer {
     queryId: uint64
     valid: bool
+    encodedVaa: cell
+    tail: cell
 }

@@ -2,7 +2,8 @@ tolk 1.1
 
 import "../libraries/errors";
 import "../libraries/tonmsg";
-import "../wormhole/messages"
+import "../wormhole/messages";
+import "../wormhole/structs";
 
 const OP_SEND_COMMENT = stringCrc32("op::integrator::send_comment");
 const OP_RELAY_COMMENT = stringCrc32("op::integrator::Relay_comment");
@@ -47,10 +48,6 @@ struct (0x00000001) VAAValidatedByCoreEvent {
     valid: bool
 }
 
-struct (0x00000002) VAAPublishedByCoreEvent {
-    tailHash: uint256
-}
-
 type Operations = SendComment | PublishMessageAnswer | RelayComment | ParseAndVerifyVMAnswer
 
 fun onInternalMessage(in: InMessage) {
@@ -79,12 +76,19 @@ fun onInternalMessage(in: InMessage) {
             var storage = lazy Storage.load();
             val payload = ParseAndVerifyVM {
                 queryId: msg.queryId,
-                encodedVM: msg.encodedVaa
+                encodedVM: msg.encodedVaa,
+                tail: beginCell().storeUint(0x11223344, 32).endCell()
             };
             call(storage.wormholeAddress, 0, SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE, payload);
         }
         ParseAndVerifyVMAnswer => {
+            debug.printString("ParseAndVerifyVMAnswer");
             emit(VAAValidatedByCoreEvent{ valid: msg.valid });
+            val (vaa, vaaHash) = VM.parse(msg.encodedVaa);
+            debug.printString("decoded vaa");
+            val comment = CommentVaa.fromCell(vaa.payload);
+            debug.printString("decoded comment");
+            call(comment.to, 0, SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE, (0x00000000 as uint32, comment.comment));
         }
         else => {
             assert (in.body.isEmpty()) throw ERROR_UNKNOWN_OPCODE;
