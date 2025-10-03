@@ -395,9 +395,6 @@ if wormchain:
     guardian_resource_deps = guardian_resource_deps + ["wormchain", "wormchain-deploy"]
 if sui:
     guardian_resource_deps = guardian_resource_deps + ["sui"]
-# TON watcher doesn't need a separate devnet resource - it connects to real TON testnet
-# if ton:
-#     guardian_resource_deps = guardian_resource_deps + ["ton"]
 
 k8s_resource(
     "guardian",

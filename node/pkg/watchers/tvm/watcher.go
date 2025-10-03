@@ -103,16 +103,16 @@ func (w *Watcher) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				logger.Error("coreEvents context done")
 				return ctx.Err()
-			case msg := <-w.Subscriber.outChan:
+			case tx := <-w.Subscriber.outChan:
 				logger.Info("TON transaction received",
 					zap.String("chainID", w.chainID.String()),
 					zap.String("component", "TxSubscriber"),
-					zap.String("address", string(msg.AccountAddr)),
-					zap.String("tx_hash", hex.EncodeToString(msg.Hash)),
-					zap.Uint64("lt", msg.LT),
-					zap.Uint32("now", msg.Now),
+					zap.String("address", string(tx.AccountAddr)),
+					zap.String("tx_hash", hex.EncodeToString(tx.Hash)),
+					zap.Uint64("lt", tx.LT),
+					zap.Uint32("now", tx.Now),
 				)
-				err = w.inspectBody(logger, msg, false)
+				err = w.inspectBody(logger, tx, false)
 				if err != nil {
 					p2p.DefaultRegistry.AddErrorCount(w.chainID, 1)
 					errC <- err //nolint:channelcheck // The watcher will exit anyway
@@ -134,7 +134,7 @@ func (w *Watcher) Run(ctx context.Context) error {
 				if err != nil {
 					logger.Error("Failed to get latest seqno", zap.Error(err))
 				} else {
-					// currentHeight.Set(float64(height)) // TODO: Fix prometheus metric
+					// currentHeight.Set(float64(height))
 					logger.Debug("ton_getLatestSeqno", zap.Int64("result", int64(height)))
 
 					p2p.DefaultRegistry.SetNetworkStats(w.chainID, &gossipv1.Heartbeat_Network{

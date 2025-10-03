@@ -138,12 +138,12 @@ func (w *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobser
 				IsReobservation:  isReobservation,
 			}
 
-			// messagesConfirmed.Inc() // TODO: Fix prometheus metric
+			// messagesConfirmed.Inc()
 			if isReobservation {
 				watchers.ReobservationsByChain.WithLabelValues("ton", "std").Inc()
 			}
 
-			logger.Info("🔥 TON MESSAGE OBSERVED 🔥",
+			logger.Info("TON MESSAGE OBSERVED",
 				zap.String("txHash", observation.TxIDString()),
 				zap.Time("timestamp", observation.Timestamp),
 				zap.Uint32("nonce", observation.Nonce),
