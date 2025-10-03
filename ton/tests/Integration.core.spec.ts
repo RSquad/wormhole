@@ -127,7 +127,7 @@ describe('Integrator', () => {
                 success: true,
                 op: Opcodes.OP_PUBLISH_MESSAGE,
             },
-            Events.EVENT_PUBLISH_MESSAGE,
+            Events.EVENT_MESSAGE_PUBLISHED,
         );
         commentPayloadCell = eventBody.loadRef();
         const commentPayload = decodeCommentPayload(commentPayloadCell);

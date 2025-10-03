@@ -9,7 +9,7 @@ export const Opcodes = {
 };
 
 export const Events = {
-    EVENT_PUBLISH_MESSAGE: 0x50acea3e,
+    EVENT_MESSAGE_PUBLISHED: 0xa237a664,
     EVENT_VAA_VALIDATED_BY_CORE: 0x00000001,
 };
 

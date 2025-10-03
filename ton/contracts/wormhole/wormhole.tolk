@@ -50,7 +50,7 @@ fun onPublishMessage(sender: address, msgValue: coins, params: PublishMessage) {
 
     val sequence = storage.useSequence(sender);
 
-    val event = PublishMessageEvent {
+    val event = MessagePublishedEvent {
         sender: sender,
         sequence: sequence,
         nonce: params.nonce,

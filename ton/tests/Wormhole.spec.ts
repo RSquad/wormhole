@@ -110,7 +110,7 @@ describe('Wormhole', () => {
         const event = trans.outMessages.values().find((msg) => msg.info.type === 'external-out');
         expect(event).toBeDefined();
         const eventBody = event!.body.beginParse();
-        expect(eventBody.loadUint(32)).toBe(Events.EVENT_PUBLISH_MESSAGE);
+        expect(eventBody.loadUint(32)).toBe(Events.EVENT_MESSAGE_PUBLISHED);
         expect(eventBody.loadAddress().toString()).toBe(publisher.address.toString());
         expect(eventBody.loadUintBig(64)).toBe(0n);
         expect(eventBody.loadUint(32)).toBe(789);

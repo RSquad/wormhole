@@ -16,7 +16,7 @@ export async function run(provider: NetworkProvider) {
         ),
     );
 
-    await integrator.sendDeploy(provider.sender(), toNano(0.05));
+    await integrator.sendDeploy(provider.sender(), toNano(0.1));
 
     await provider.waitForDeploy(integrator.address);
 }

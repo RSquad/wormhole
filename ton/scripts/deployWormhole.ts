@@ -3,6 +3,7 @@ import { GuardianSetDictionaryValue, Wormhole } from '../wrappers/Wormhole';
 import { compile, NetworkProvider } from '@ton/blueprint';
 import { Random, Time } from '../tests/TestUtils';
 import { Crypto } from '../tests/TestUtils';
+import { TON_CHAIN_ID } from '../wrappers/Constants';
 
 export async function run(provider: NetworkProvider) {
     const keys = new Array(19).fill(0).map(() => Crypto.makeRandomKeyPair());
@@ -24,7 +25,7 @@ export async function run(provider: NetworkProvider) {
                 guardianSets,
                 guardianSetIndex,
                 guardianSetExpiry: 0,
-                chainId: 0,
+                chainId: TON_CHAIN_ID,
                 governanceChainId: 0,
                 governanceContract: Buffer.alloc(32),
             },

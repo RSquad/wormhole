@@ -10,8 +10,23 @@ export function integratorConfigToCell(config: IntegratorConfig): Cell {
     return beginCell().storeAddress(config.wormholeAddress).storeUint(config.id, 16).endCell();
 }
 
+export type CommentOpts = {
+    queryId: number;
+    nonce: number;
+    consistencyLevel: number;
+    to: Address;
+    comment: string;
+};
+
+export type RelayCommentOpts = {
+    queryId: number;
+    encodedVaa: Cell;
+};
 export class Integrator implements Contract {
-    constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) {}
+    constructor(
+        readonly address: Address,
+        readonly init?: { code: Cell; data: Cell },
+    ) {}
 
     static createFromAddress(address: Address) {
         return new Integrator(address);
@@ -31,18 +46,7 @@ export class Integrator implements Contract {
         });
     }
 
-    async sendComment(
-        provider: ContractProvider, 
-        via: Sender, 
-        value: bigint, 
-        opts: { 
-            queryId: number, 
-            nonce: number,
-            consistencyLevel: number
-            to: Address,
-            comment: string,
-        }
-    ) {
+    async sendComment(provider: ContractProvider, via: Sender, value: bigint, opts: CommentOpts) {
         await provider.internal(via, {
             value,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
@@ -57,15 +61,7 @@ export class Integrator implements Contract {
         });
     }
 
-    async sendRelayComment(
-        provider: ContractProvider, 
-        via: Sender, 
-        value: bigint, 
-        opts: { 
-            queryId: number, 
-            encodedVaa: Cell,
-        }
-    ) {
+    async sendRelayComment(provider: ContractProvider, via: Sender, value: bigint, opts: RelayCommentOpts) {
         await provider.internal(via, {
             value,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
