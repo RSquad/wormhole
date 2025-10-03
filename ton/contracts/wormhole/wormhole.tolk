@@ -4,7 +4,6 @@ import "../libraries/errors";
 import "../libraries/tonmsg";
 import "events";
 import "structs";
-import "opcodes";
 import "messages";
 
 // this struct defines storage layout of the contract

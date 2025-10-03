@@ -25,3 +25,13 @@ fun emit<TPayload>(payload: TPayload) {
     });
     extOutMsg.send(SEND_MODE_REGULAR);
 }
+
+fun call<TPayload>(to: address, amount: coins, mode: uint8, payload: TPayload) {
+    val msg = createMessage({
+        bounce: true,
+        value: amount,
+        dest: to,
+        body: payload
+    });
+    msg.send(mode);
+}

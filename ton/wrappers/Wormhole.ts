@@ -12,6 +12,7 @@ import {
     Slice,
     TupleItem,
 } from '@ton/core';
+import { Opcodes } from './Constants';
 
 export type GuardianSet = {
     keys: Buffer[];
@@ -81,15 +82,6 @@ export function wormholeConfigToCell(config: WormholeConfig): Cell {
         .storeUint(config.id, 16)
         .endCell();
 }
-
-export const Opcodes = {
-    OP_PUBLISH_MESSAGE: 0x1ce51423,
-    OP_PARSE_AND_VERIFY_VM: 0xabfc7db9,
-};
-
-export const Events = {
-    EVENT_PUBLISH_MESSAGE: 0x50acea3e,
-};
 
 export class Wormhole implements Contract {
     constructor(
