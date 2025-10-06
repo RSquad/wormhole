@@ -5,8 +5,16 @@ import "../libraries/tonmsg";
 import "../wormhole/messages";
 import "../wormhole/structs";
 
+/*
+Opcodes generated with the most significant bit set to 0 to distinguish 
+it from the response opcode, which has the most significant bit set to 1.
+Remark: we cannot use constants as struct tags (only literals in tolk 1.1)
+so these constants are unused.
+*/
 const OP_SEND_COMMENT = stringCrc32("op::integrator::send_comment");
 const OP_RELAY_COMMENT = stringCrc32("op::integrator::Relay_comment");
+
+const ERROR_INVALID_TAIL = 1000;
 
 
 struct Storage {
@@ -70,7 +78,7 @@ fun onInternalMessage(in: InMessage) {
         }
         PublishMessageAnswer => {
             val tailHash = beginCell().storeUint(0x11223344, 32).endCell().hash();
-            assert(msg.tail.hash() == tailHash) throw 1000;
+            assert(msg.tail.hash() == tailHash) throw ERROR_INVALID_TAIL;
         }
         RelayComment => {
             var storage = lazy Storage.load();
