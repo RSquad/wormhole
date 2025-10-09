@@ -74,6 +74,9 @@ export const handler = async (
   } else if (chain === "Aptos") {
     const aptos = require("../../aptos");
     results = await aptos.queryRegistrationsAptos(network, module);
+  } else if (chain === "Ton") {
+    const ton = ("../../ton");
+    results = await ton.queryRegistrationsTon(network, module);
   } else {
     throw Error(`Command not supported for chain ${chain}`);
   }

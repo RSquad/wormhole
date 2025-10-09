@@ -10,6 +10,7 @@ import * as parse from "./parse";
 import * as recover from "./recover";
 import * as submit from "./submit";
 import * as sui from "./sui";
+import * as ton from "./ton";
 import * as transfer from "./transfer";
 import * as verifyVaa from "./verifyVaa";
 import * as status from "./status";
@@ -28,6 +29,7 @@ export const CLI_COMMAND_MODULES = [
   recover,
   submit,
   sui,
+  ton,
   transfer,
   verifyVaa,
   status,

@@ -108,11 +108,21 @@ export function parse(buffer: Buffer): VAA<Payload | Other> {
     .or(wormholeRelayerSetDefaultDeliveryProvider());
   let payload: Payload | Other | null = parser.parse(vaa.payload);
   if (payload === null) {
-    payload = {
-      type: "Other",
-      hex: Buffer.from(vaa.payload).toString("hex"),
-      ascii: Buffer.from(vaa.payload).toString("utf8"),
-    };
+    var hex = Buffer.from(vaa.payload).toString("hex")
+    var ascii = Buffer.from(vaa.payload).toString("utf8");
+    if (vaa.emitterChain === 62) {
+      payload = {
+        type: "TonComment",
+        hex,
+        ascii,
+      } as TonComment;
+    } else {
+      payload = {
+        type: "Other",
+        hex,
+        ascii,
+      };
+    }
   } else {
     delete (payload as any)["tokenURILength"];
   }

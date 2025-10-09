@@ -11,6 +11,7 @@ import { execute_solana } from "../solana";
 import { execute_terra } from "../terra";
 import { assertKnownPayload, parse, Payload, VAA } from "../vaa";
 import { execute_xpla } from "../xpla";
+import { execute_ton } from "../ton";
 import { NETWORKS } from "../consts";
 import { chainToChain, getNetwork } from "../utils";
 import {
@@ -185,6 +186,8 @@ async function executeSubmit(
     await submitSui(parsedVaa.payload, buf, network, rpc);
   } else if (chain === "Aptos") {
     await execute_aptos(parsedVaa.payload, buf, network, contractAddress, rpc);
+  } else if (chain === "Ton") {
+    await execute_ton(parsedVaa.payload, buf, network, contractAddress, rpc, parsedVaa);
   } else {
     throw new Error(`Unsupported chain: ${chain}`);
   }
