@@ -8,7 +8,7 @@ import {
     contracts,
 } from "@wormhole-foundation/sdk-base";
 
-function convertVAAToTonFormat(vaa: Buffer, parsedVaa: VAA<any>, recipientAddress?: Address): Cell {
+function convertVAAToTonFormat(vaa: Buffer, parsedVaa: VAA<any>, recipientAddress: Address): Cell {
     const signaturesDict = Dictionary.empty(
         Dictionary.Keys.Uint(8), 
         {
@@ -31,31 +31,18 @@ function convertVAAToTonFormat(vaa: Buffer, parsedVaa: VAA<any>, recipientAddres
 
     let payloadCell: Cell;
     
-    if (parsedVaa.payload.type === 'TonComment') {
-        const asciiPayload = parsedVaa.payload.ascii || '';
-        const hexMatch = asciiPayload.match(/\[([a-fA-F0-9]+)\]/);
-        
-        let commentText = '';
-        if (hexMatch) {
-            try {
-                commentText = Buffer.from(hexMatch[1], 'hex').toString('utf8');
-            } catch (e) {
-                commentText = asciiPayload;
-            }
-        } else {
-            commentText = asciiPayload;
-        }
-        
+    if (parsedVaa.payload.type === 'Comment') {
+        const commentText = parsedVaa.payload.comment || 
+                           (parsedVaa.payload.hex ? Buffer.from(parsedVaa.payload.hex, 'hex').toString('utf8') : '');
         console.log(`Extracted comment text: "${commentText}"`);
-
-        const finalRecipientAddress = recipientAddress || Address.parse('0:0000000000000000000000000000000000000000000000000000000000000000');
+        console.log(`Recipient address: ${recipientAddress.toString()}`);
 
         const commentCell = beginCell()
             .storeStringTail(commentText)
             .endCell();
 
         payloadCell = beginCell()
-            .storeAddress(finalRecipientAddress)
+            .storeAddress(recipientAddress)
             .storeRef(commentCell)
             .endCell();
     } else {
@@ -120,6 +107,7 @@ export async function execute_ton(
 }
 
 const OP_RELAY_COMMENT = 0x327587B5;
+const OP_SEND_COMMENT = 0x222A627E;
 
 async function sendTonTransaction(
     network: Network,
@@ -189,6 +177,64 @@ async function sendTonTransaction(
     console.log("Transaction confirmed");
     console.log(`New seqno: ${seqno + 1}`);
     return `seqno-${seqno + 1}`;
+}
+
+// SendComment helper: sends a comment message to Integrator (publishes via Wormhole on TON)
+export async function sendTonComment(
+    network: Network,
+    rpc: string | undefined,
+    integratorAddress: string,
+    commentText: string,
+    toAddress?: string,
+    nonce: number = 0,
+    consistencyLevel: number = 15,
+    queryId?: bigint
+): Promise<void> {
+    const networkConfig = NETWORKS[network]["Ton"];
+    if (!networkConfig?.key) throw new Error("No mnemonic/key for TON");
+
+    const client = new TonClient({ endpoint: rpc ?? networkConfig.rpc! });
+    if (!client) throw new Error("No RPC URL for TON");
+
+    const keyPair = await mnemonicToPrivateKey(networkConfig.key.split(" "));
+    const wallet = WalletContractV4.create({ workchain: 0, publicKey: keyPair.publicKey });
+    const contract = client.open(wallet);
+
+    const recipient = toAddress ? Address.parse(toAddress) : wallet.address;
+
+    //const commentCell = beginCell().storeStringRefTail(commentText).endCell();
+
+    const body = beginCell()
+        .storeUint(OP_SEND_COMMENT, 32)
+        .storeUint(queryId ?? BigInt(Date.now()), 64)
+        .storeUint(nonce >>> 0, 32)
+        .storeUint(consistencyLevel & 0xff, 8)
+        .storeAddress(recipient)
+        .storeStringTail(commentText)
+        .endCell();
+
+    const seqno = await contract.getSeqno();
+    await contract.sendTransfer({
+        seqno,
+        secretKey: keyPair.secretKey,
+        messages: [
+            internal({
+                to: Address.parse(integratorAddress),
+                value: BigInt(200000000),
+                body,
+            })
+        ],
+    });
+
+    console.log(`Message sent to Integrator ${integratorAddress}`);
+    console.log(`QueryId: ${queryId ?? BigInt(Date.now())}`);
+
+    let currentSeqno = seqno;
+    while (currentSeqno === seqno) {
+        await new Promise(r => setTimeout(r, 1500));
+        currentSeqno = await contract.getSeqno();
+    }
+    console.log("Transaction confirmed");
 }
 
 export async function queryRegistrationsTon(

@@ -884,3 +884,51 @@ export async function queryRegistrationsEvm(
   }
   return results;
 }
+
+/**
+ * Relay a comment VAA to an Ethereum CommentIntegrator contract
+ */
+export async function relayCommentToEthereum(
+  vaa: Buffer,
+  network: Network,
+  chain: PlatformToChains<"Evm">,
+  integratorAddress: string,
+  rpc?: string
+): Promise<string> {
+  const n = NETWORKS[network][chain];
+  const rpcUrl = rpc ?? n.rpc;
+  if (!rpcUrl) {
+    throw Error(`No ${network} rpc defined for ${chain}`);
+  }
+
+  const key = n.key;
+  if (!key) {
+    throw Error(`No ${network} key defined for ${chain}`);
+  }
+
+  const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+  const wallet = new ethers.Wallet(key, provider);
+
+  const integratorABI = [
+    "function relayComment(bytes memory encodedVaa) external"
+  ];
+
+  const integrator = new ethers.Contract(
+    integratorAddress,
+    integratorABI,
+    wallet
+  );
+
+  console.log(`Relaying comment VAA to Ethereum CommentIntegrator at ${integratorAddress}...`);
+  
+  const tx = await integrator.relayComment(vaa, {
+    gasLimit: 1000000
+  });
+  console.log(`Transaction sent: ${tx.hash}`);
+  
+  const receipt = await tx.wait();
+  console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+  console.log(`VAA успешно доставлен в Ethereum`);
+  
+  return tx.hash;
+}

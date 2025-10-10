@@ -5,6 +5,7 @@ import * as editVaa from "./editVaa";
 import * as evm from "./evm";
 import * as generate from "./generate";
 import * as info from "./info";
+import * as getVaa from "./getVaa";
 import * as near from "./near";
 import * as parse from "./parse";
 import * as recover from "./recover";
@@ -24,6 +25,7 @@ export const CLI_COMMAND_MODULES = [
   evm,
   generate,
   info,
+  getVaa,
   near,
   parse,
   recover,

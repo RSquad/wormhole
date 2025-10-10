@@ -18,6 +18,56 @@ export const desc = "TON utilities";
 export const builder = (y: typeof yargs) =>
     y
         .command(
+            "send-message <message>",
+            "Send a Comment message via TON Integrator",
+            (yargs) =>
+                yargs
+                    .positional("message", {
+                        type: "string",
+                        describe: "Message text",
+                        demandOption: true,
+                    })
+                    .option("network", NETWORK_OPTIONS)
+                    .option("rpc", RPC_OPTIONS)
+                    .option("contract-address", {
+                        alias: "a",
+                        describe: "Integrator contract address",
+                        type: "string",
+                        demandOption: true,
+                    })
+                    .option("to", {
+                        describe: "Recipient TON address (defaults to sender)",
+                        type: "string",
+                        demandOption: false,
+                    })
+                    .option("nonce", {
+                        describe: "Message nonce",
+                        type: "number",
+                        default: 0,
+                        demandOption: false,
+                    })
+                    .option("consistency-level", {
+                        describe: "Consistency level",
+                        type: "number",
+                        default: 15,
+                        demandOption: false,
+                    }),
+            async (argv) => {
+                const network = getNetwork(argv.network);
+                const rpc = argv.rpc ?? NETWORKS[network].Ton?.rpc;
+                if (!rpc) throw new Error("No TON RPC configured");
+
+                const integrator = argv["contract-address"] as string;
+                const msg = argv.message as string;
+                const to = argv.to as string | undefined;
+                const nonce = (argv.nonce as number) ?? 0;
+                const cl = (argv["consistency-level"] as number) ?? 15;
+
+                const { sendTonComment } = await import("../ton");
+                await sendTonComment(network, rpc, integrator, msg, to, nonce, cl);
+            }
+        )
+        .command(
             "init-wormhole",
             "Init Wormhole core contract",
             (yargs) =>
@@ -91,41 +141,6 @@ export const builder = (y: typeof yargs) =>
                 console.log(`Guardians: ${guardian_addresses.length}`);
 
                 throw new Error("TON init-wormhole not fully implemented yet. Please use TON-specific tools.");
-            }
-        )
-        .command(
-            "send-example-message <message>",
-            "Send example message",
-            (yargs) =>
-                yargs
-                    .positional("message", {
-                        type: "string",
-                        describe: "Message to send",
-                        demandOption: true,
-                    })
-                    .option("network", NETWORK_OPTIONS)
-                    .option("rpc", RPC_OPTIONS)
-                    .option("sender", {
-                        describe: "Sender address",
-                        type: "string",
-                        demandOption: false,
-                    }),
-            async (argv) => {
-                const network = getNetwork(argv.network);
-                const rpc = argv.rpc ?? NETWORKS[network].Ton?.rpc;
-                
-                if (!rpc) {
-                    throw new Error("RPC URL is required");
-                }
-                
-                const message = argv.message;
-                
-                console.log("TON example message would be sent here");
-                console.log(`Message: ${message}`);
-                console.log(`Network: ${network}`);
-                console.log(`RPC: ${rpc}`);
-
-                throw new Error("TON send-example-message not fully implemented yet. Please use TON-specific tools.");
             }
         )
         .strict()

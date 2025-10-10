@@ -66,8 +66,19 @@ export const builder = (y: typeof yargs) =>
 export const handler = async (
   argv: Awaited<ReturnType<typeof builder>["argv"]>
 ) => {
-  const vaa_hex = String(argv.vaa);
-  const buf = Buffer.from(vaa_hex, "hex");
+  const vaa_input = String(argv.vaa);
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(vaa_input, "hex");
+    if (buf.length == 0) {
+      throw Error("Couldn't parse VAA as hex");
+    }
+  } catch (e) {
+    buf = Buffer.from(vaa_input, "base64");
+    if (buf.length == 0) {
+      throw Error("Couldn't parse VAA as base64 or hex");
+    }
+  }
   const parsed_vaa = parse(buf);
 
   assertKnownPayload(parsed_vaa);
@@ -84,7 +95,7 @@ export const handler = async (
       throw Error(`--contract_address may not be specified with --all-chains`);
     }
 
-    await submitToAll(vaa_hex, parsed_vaa, buf, network);
+    await submitToAll(vaa_input, parsed_vaa, buf, network);
     return;
   }
 
@@ -156,14 +167,28 @@ async function executeSubmit(
   contractAddress: string | undefined
 ) {
   if (chainToPlatform(chain) === "Evm") {
-    await execute_evm(
-      parsedVaa.payload,
-      buf,
-      network,
-      chain as PlatformToChains<"Evm">,
-      contractAddress,
-      rpc
-    );
+    if (parsedVaa.payload.type === "Comment") {
+      if (!contractAddress) {
+        throw new Error("Contract address is required for Comment relay");
+      }
+      const { relayCommentToEthereum } = await import("../evm");
+      await relayCommentToEthereum(
+        buf,
+        network,
+        chain as PlatformToChains<"Evm">,
+        contractAddress,
+        rpc
+      );
+    } else {
+      await execute_evm(
+        parsedVaa.payload,
+        buf,
+        network,
+        chain as PlatformToChains<"Evm">,
+        contractAddress,
+        rpc
+      );
+    }
   } else if (chain === "Terra" || chain === "Terra2") {
     await execute_terra(parsedVaa.payload, buf, network, chain);
   } else if (chain === "Solana" || chain === "Pythnet") {

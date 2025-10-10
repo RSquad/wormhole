@@ -58,6 +58,14 @@ export interface Other {
   ascii?: string;
 }
 
+export interface Comment {
+  type: "Comment";
+  to: string;
+  comment: string;
+  hex?: string;  // для raw данных, если нужно
+  ascii?: string; // для debug
+}
+
 // All the different types of payloads
 export type Payload =
   | GuardianSetUpgrade
@@ -75,7 +83,8 @@ export type Payload =
   | CoreContractRecoverChainId
   | PortalContractRecoverChainId<"TokenBridge">
   | PortalContractRecoverChainId<"NFTBridge">
-  | WormholeRelayerSetDefaultDeliveryProvider;
+  | WormholeRelayerSetDefaultDeliveryProvider
+  | Comment;
 
 export type ContractUpgrade =
   | CoreContractUpgrade
@@ -105,17 +114,21 @@ export function parse(buffer: Buffer): VAA<Payload | Other> {
     .or(coreContractRecoverChainId())
     .or(portalContractRecoverChainId("TokenBridge"))
     .or(portalContractRecoverChainId("NFTBridge"))
-    .or(wormholeRelayerSetDefaultDeliveryProvider());
+    .or(wormholeRelayerSetDefaultDeliveryProvider())
+    .or(ethCommentParser());
   let payload: Payload | Other | null = parser.parse(vaa.payload);
   if (payload === null) {
     var hex = Buffer.from(vaa.payload).toString("hex")
     var ascii = Buffer.from(vaa.payload).toString("utf8");
     if (vaa.emitterChain === 62) {
+      const commentText = Buffer.from(hex, 'hex').toString('utf8');
       payload = {
-        type: "TonComment",
+        type: "Comment",
+        to: "0x0000000000000000000000000000000000000000",
+        comment: commentText,
         hex,
         ascii,
-      } as TonComment;
+      } as Comment;
     } else {
       payload = {
         type: "Other",
@@ -215,6 +228,8 @@ function vaaBody(vaa: VAA<Payload | Other>) {
   let payload_str: string;
   if (vaa.payload.type === "Other") {
     payload_str = vaa.payload.hex;
+  } else if (vaa.payload.type === "Comment") {
+    payload_str = vaa.payload.hex || Buffer.from(vaa.payload.comment).toString('hex');
   } else {
     let payload = vaa.payload;
     switch (payload.module) {
@@ -998,6 +1013,31 @@ function serialiseWormholeRelayerSetDefaultDeliveryProvider(
     encode("bytes32", hex(payload.relayProviderAddress)),
   ];
   return body.join("");
+}
+
+function ethCommentParser(): P<Comment> {
+  return new P(
+    new Parser()
+      .endianess("big")
+      .string("type", {
+        length: (_) => 0,
+        formatter: (_) => "Comment",
+      })
+      .array("to", {
+        type: "uint8",
+        lengthInBytes: 20,
+        formatter: (arr) => "0x" + Buffer.from(arr).toString("hex"),
+      })
+      .uint16("commentLength")
+      .string("comment", {
+        length: "commentLength",
+        encoding: "utf8",
+      })
+      .string("end", {
+        greedy: true,
+        assert: (str) => str === "",
+      })
+  );
 }
 
 // This function should be called after pattern matching on all possible options

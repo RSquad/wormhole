@@ -124,10 +124,14 @@ if not ci:
 def k8s_yaml_with_ns(objects):
     return k8s_yaml(namespace_inject(objects, namespace))
 
-docker_build(
-    ref = "cli-gen",
-    context = ".",
-    dockerfile = "Dockerfile.cli",
+custom_build(
+    'cli-gen',
+    'DOCKER_BUILDKIT=1 docker buildx build --progress=plain --platform linux/amd64 -f Dockerfile.cli --build-context wormhole-sdk-ts=/Users/marina/GolandProjects/wormhole-sdk-ts --load -t $EXPECTED_REF .',
+    deps=[
+        'Dockerfile.cli',
+        'clients/js',
+        '/Users/marina/GolandProjects/wormhole-sdk-ts',
+    ],
 )
 
 docker_build(
@@ -323,7 +327,7 @@ def build_node_yaml():
                     "--tonConfigURL",
                     "https://ton.org/testnet-global.config.json",
                     "--tonContract",
-                    "kQAz5rRlycWBC9dCI8aCx-mQBsOhjsMIdoOmIm_q_yyBTUG4"
+                    "kQC5T_CLz9CUHDn6Sd4cUGImwee0NhD2SVNbUwwRSjieFF5N"
                 ]
 
             if wormchain:

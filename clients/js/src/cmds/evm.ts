@@ -189,6 +189,18 @@ export const builder = function (y: typeof yargs) {
         runCommand(cmd, argv["validator-args"]);
       }
     )
+    .command(
+      "send-message <chain> <to> <comment>",
+      "Send a comment via Ethereum CommentIntegrator",
+      async (yargs) => {
+        const m = await import("./evm/sendMessage");
+        return m.builder(yargs);
+      },
+      async (argv) => {
+        const m = await import("./evm/sendMessage");
+        await m.handler(argv);
+      }
+    )
     .strict()
     .demandCommand();
 };
