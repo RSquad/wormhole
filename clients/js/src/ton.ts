@@ -8,65 +8,9 @@ import {
     contracts,
 } from "@wormhole-foundation/sdk-base";
 
-function convertVAAToTonFormat(vaa: Buffer, parsedVaa: VAA<any>, recipientAddress: Address): Cell {
-    const signaturesDict = Dictionary.empty(
-        Dictionary.Keys.Uint(8), 
-        {
-            serialize: (src: { signature: Buffer, guardianIndex: number }, builder) => {
-                builder.storeBuffer(src.signature, 65);
-                builder.storeUint(src.guardianIndex, 8);
-            },
-            parse: (src) => {
-                throw new Error("Not implemented");
-            }
-        }
-    );
-
-    parsedVaa.signatures.forEach((sig, index) => {
-        signaturesDict.set(index, {
-            signature: Buffer.from(sig.signature, 'hex'),
-            guardianIndex: sig.guardianSetIndex
-        });
-    });
-
-    let payloadCell: Cell;
-    
-    if (parsedVaa.payload.type === 'Comment') {
-        const commentText = parsedVaa.payload.comment || 
-                           (parsedVaa.payload.hex ? Buffer.from(parsedVaa.payload.hex, 'hex').toString('utf8') : '');
-        console.log(`Extracted comment text: "${commentText}"`);
-        console.log(`Recipient address: ${recipientAddress.toString()}`);
-
-        const commentCell = beginCell()
-            .storeStringTail(commentText)
-            .endCell();
-
-        payloadCell = beginCell()
-            .storeAddress(recipientAddress)
-            .storeRef(commentCell)
-            .endCell();
-    } else {
-        const payloadHex = (parsedVaa.payload as any).hex || '';
-        payloadCell = beginCell()
-            .storeBuffer(Buffer.from(payloadHex, 'hex'))
-            .endCell();
-    }
-
-    const tonVaa = beginCell()
-        .storeUint(parsedVaa.version, 8)
-        .storeUint(parsedVaa.guardianSetIndex, 32)
-        .storeUint(parsedVaa.signatures.length, 8)
-        .storeDict(signaturesDict)
-        .storeUint(parsedVaa.timestamp, 32)
-        .storeUint(parsedVaa.nonce, 32)
-        .storeUint(parsedVaa.emitterChain, 16)
-        .storeUint(BigInt(parsedVaa.emitterAddress.startsWith('0x') ? parsedVaa.emitterAddress : '0x' + parsedVaa.emitterAddress), 256)
-        .storeUint(parsedVaa.sequence, 64)
-        .storeUint(parsedVaa.consistencyLevel, 8)
-        .storeRef(payloadCell)
-        .endCell();
-    
-    return tonVaa;
+// Updated: core expects raw VAA bytes wrapped in a cell
+function convertVAAToTonFormat(vaa: Buffer, _parsedVaa: VAA<any>, _recipientAddress: Address): Cell {
+    return beginCell().storeBuffer(vaa).endCell();
 }
 
 export async function execute_ton(
@@ -185,8 +129,8 @@ export async function sendTonComment(
     rpc: string | undefined,
     integratorAddress: string,
     commentText: string,
-    toAddress?: string,
-    nonce: number = 0,
+    toHex?: string,
+    chainId: number = 2,
     consistencyLevel: number = 15,
     queryId?: bigint
 ): Promise<void> {
@@ -200,17 +144,26 @@ export async function sendTonComment(
     const wallet = WalletContractV4.create({ workchain: 0, publicKey: keyPair.publicKey });
     const contract = client.open(wallet);
 
-    const recipient = toAddress ? Address.parse(toAddress) : wallet.address;
+    // Expect 32-byte destination address as hex (e.g., EVM address without 0x or with 0x)
+    const toBuffer = (() => {
+        if (!toHex) return Buffer.alloc(32); // default zero address if not provided
+        const cleaned = toHex.startsWith("0x") ? toHex.slice(2) : toHex;
+        const buf = Buffer.from(cleaned.padStart(64, "0"), "hex");
+        if (buf.length !== 32) {
+            throw new Error("to must be a 32-byte hex string");
+        }
+        return buf;
+    })();
 
-    //const commentCell = beginCell().storeStringRefTail(commentText).endCell();
+    const commentCell = beginCell().storeStringTail(commentText).endCell();
 
     const body = beginCell()
         .storeUint(OP_SEND_COMMENT, 32)
         .storeUint(queryId ?? BigInt(Date.now()), 64)
-        .storeUint(nonce >>> 0, 32)
         .storeUint(consistencyLevel & 0xff, 8)
-        .storeAddress(recipient)
-        .storeStringTail(commentText)
+        .storeUint(chainId & 0xffff, 16)
+        .storeBuffer(toBuffer, 32)
+        .storeRef(commentCell)
         .endCell();
 
     const seqno = await contract.getSeqno();
