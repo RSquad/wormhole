@@ -10,6 +10,7 @@ export async function run(provider: NetworkProvider) {
         Integrator.createFromConfig(
             {
                 id: Random.id(16),
+                nonce: 0,
                 wormholeAddress,
             },
             await compile('Integrator'),

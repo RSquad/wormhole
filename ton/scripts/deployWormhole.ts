@@ -6,7 +6,7 @@ import { Crypto } from '../tests/TestUtils';
 import { TON_CHAIN_ID } from '../wrappers/Constants';
 
 export async function run(provider: NetworkProvider) {
-    const keys = new Array(19).fill(0).map(() => Crypto.makeRandomKeyPair());
+    const keys = new Array(1).fill(0).map(() => Crypto.makeRandomKeyPair());
     const publicKeys = keys.map((key) => Crypto.toXOnly(key.keyPair.publicKey as Buffer));
 
     const guardianSetIndex = 0; // the first guardian set
@@ -20,7 +20,7 @@ export async function run(provider: NetworkProvider) {
         Wormhole.createFromConfig(
             {
                 id: Random.id(16),
-                messageFee: toNano(0.1),
+                messageFee: toNano(0.01),
                 sequences: Dictionary.empty(),
                 guardianSets,
                 guardianSetIndex,
