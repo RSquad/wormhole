@@ -115,29 +115,21 @@ export function parse(buffer: Buffer): VAA<Payload | Other> {
     .or(portalContractRecoverChainId("TokenBridge"))
     .or(portalContractRecoverChainId("NFTBridge"))
     .or(wormholeRelayerSetDefaultDeliveryProvider())
-    .or(ethCommentParser());
+    .or(ethCommentParser())
+    .or(tonCommentParser());
   let payload: Payload | Other | null = parser.parse(vaa.payload);
   if (payload === null) {
     var hex = Buffer.from(vaa.payload).toString("hex")
     var ascii = Buffer.from(vaa.payload).toString("utf8");
-    if (vaa.emitterChain === 62) {
-      const commentText = Buffer.from(hex, 'hex').toString('utf8');
-      payload = {
-        type: "Comment",
-        to: "0x0000000000000000000000000000000000000000",
-        comment: commentText,
-        hex,
-        ascii,
-      } as Comment;
-    } else {
-      payload = {
-        type: "Other",
-        hex,
-        ascii,
-      };
-    }
+    payload = {
+      type: "Other",
+      hex,
+      ascii,
+    };
   } else {
     delete (payload as any)["tokenURILength"];
+    delete (payload as any)["chainId"];
+    delete (payload as any)["commentCellBoc"];
   }
   var myVAA = { ...vaa, payload };
 
@@ -1038,6 +1030,47 @@ function ethCommentParser(): P<Comment> {
         assert: (str) => str === "",
       })
   );
+}
+
+function tonCommentParser(): P<Comment> {
+  const baseParser = new Parser()
+    .endianess("big")
+    .string("type", {
+      length: (_) => 0,
+      formatter: (_) => "Comment",
+    })
+    .uint16("chainId")
+    .array("to", {
+      type: "uint8",
+      lengthInBytes: 32,
+      formatter: (arr) => "0x" + Buffer.from(arr).toString("hex"),
+    })
+    .buffer("commentCellBoc", {
+      readUntil: "eof",
+    });
+
+  const p = new P<Comment>(baseParser);
+  const originalParse = p.parse.bind(p);
+  
+  p.parse = (payload: Buffer): Comment | null => {
+    const result: any = originalParse(payload);
+    if (!result) return null;
+    
+    // Try to parse BOC and extract string from cell
+    try {
+      const { Cell } = require("@ton/ton");
+      const cell = Cell.fromBoc(result.commentCellBoc)[0];
+      const slice = cell.beginParse();
+      result.comment = slice.loadStringTail();
+    } catch (e) {
+      // If parsing fails, use hex
+      result.comment = result.commentCellBoc.toString("hex");
+    }
+    
+    return result as Comment;
+  };
+  
+  return p;
 }
 
 // This function should be called after pattern matching on all possible options

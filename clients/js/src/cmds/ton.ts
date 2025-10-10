@@ -36,15 +36,14 @@ export const builder = (y: typeof yargs) =>
                         demandOption: true,
                     })
                     .option("to", {
-                        describe: "Recipient TON address (defaults to sender)",
+                        describe: "Recipient address (TON address or 32-byte hex)",
                         type: "string",
                         demandOption: false,
                     })
-                    .option("nonce", {
-                        describe: "Message nonce",
+                    .option("chain-id", {
+                        describe: "Destination chain id (uint16)",
                         type: "number",
-                        default: 0,
-                        demandOption: false,
+                        demandOption: true,
                     })
                     .option("consistency-level", {
                         describe: "Consistency level",
@@ -60,11 +59,11 @@ export const builder = (y: typeof yargs) =>
                 const integrator = argv["contract-address"] as string;
                 const msg = argv.message as string;
                 const to = argv.to as string | undefined;
-                const nonce = (argv.nonce as number) ?? 0;
+                const chainId = argv["chain-id"] as number;
                 const cl = (argv["consistency-level"] as number) ?? 15;
 
                 const { sendTonComment } = await import("../ton");
-                await sendTonComment(network, rpc, integrator, msg, to, nonce, cl);
+                await sendTonComment(network, rpc, integrator, msg, to, chainId, cl);
             }
         )
         .command(

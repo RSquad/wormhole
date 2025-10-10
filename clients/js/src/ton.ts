@@ -8,11 +8,66 @@ import {
     contracts,
 } from "@wormhole-foundation/sdk-base";
 
-// Updated: core expects raw VAA bytes wrapped in a cell
-function convertVAAToTonFormat(vaa: Buffer, _parsedVaa: VAA<any>, _recipientAddress: Address): Cell {
-    return beginCell().storeBuffer(vaa).endCell();
-}
+function convertVAAToTonFormat(vaa: Buffer, parsedVaa: VAA<any>, recipientAddress: Address): Cell {
+    const signaturesDict = Dictionary.empty(
+        Dictionary.Keys.Uint(8),
+        {
+            serialize: (src: { signature: Buffer, guardianIndex: number }, builder) => {
+                builder.storeBuffer(src.signature, 65);
+                builder.storeUint(src.guardianIndex, 8);
+            },
+            parse: (src) => {
+                throw new Error("Not implemented");
+            }
+        }
+    );
 
+    parsedVaa.signatures.forEach((sig, index) => {
+        signaturesDict.set(index, {
+            signature: Buffer.from(sig.signature, 'hex'),
+            guardianIndex: sig.guardianSetIndex
+        });
+    });
+
+    let payloadCell: Cell;
+
+    if (parsedVaa.payload.type === 'Comment') {
+        const commentText = parsedVaa.payload.comment ||
+            (parsedVaa.payload.hex ? Buffer.from(parsedVaa.payload.hex, 'hex').toString('utf8') : '');
+        console.log(`Extracted comment text: "${commentText}"`);
+        console.log(`Recipient address: ${recipientAddress.toString()}`);
+
+        const commentCell = beginCell()
+            .storeStringTail(commentText)
+            .endCell();
+
+        payloadCell = beginCell()
+            .storeAddress(recipientAddress)
+            .storeRef(commentCell)
+            .endCell();
+    } else {
+        const payloadHex = (parsedVaa.payload as any).hex || '';
+        payloadCell = beginCell()
+            .storeBuffer(Buffer.from(payloadHex, 'hex'))
+            .endCell();
+    }
+
+    const tonVaa = beginCell()
+        .storeUint(parsedVaa.version, 8)
+        .storeUint(parsedVaa.guardianSetIndex, 32)
+        .storeUint(parsedVaa.signatures.length, 8)
+        .storeDict(signaturesDict)
+        .storeUint(parsedVaa.timestamp, 32)
+        .storeUint(parsedVaa.nonce, 32)
+        .storeUint(parsedVaa.emitterChain, 16)
+        .storeUint(BigInt(parsedVaa.emitterAddress.startsWith('0x') ? parsedVaa.emitterAddress : '0x' + parsedVaa.emitterAddress), 256)
+        .storeUint(parsedVaa.sequence, 64)
+        .storeUint(parsedVaa.consistencyLevel, 8)
+        .storeRef(payloadCell)
+        .endCell();
+
+    return tonVaa;
+}
 export async function execute_ton(
     payload: Payload,
     vaa: Buffer,
@@ -41,17 +96,29 @@ export async function execute_ton(
     const vaaCell = convertVAAToTonFormat(vaa, parsedVaa, wallet.address);
 
     console.log("Submitting vaa");
+    
+    if (!contract) {
+        throw new Error("Contract address is required for TON");
+    }
+    
     await sendTonTransaction(
         network,
         rpc,
         contract,
         "submit_vaa",
-        vaaCell
+       vaaCell
     );
 }
 
 const OP_RELAY_COMMENT = 0x327587B5;
 const OP_SEND_COMMENT = 0x222A627E;
+
+
+async function bufferToCellChain(buf: Payload): Cell {
+    //const boc = Buffer.from(buf.toString(), "base64");
+    const [cell] = Cell.fromBoc(buf);
+    return cell;
+}
 
 async function sendTonTransaction(
     network: Network,
@@ -130,7 +197,7 @@ export async function sendTonComment(
     integratorAddress: string,
     commentText: string,
     toHex?: string,
-    chainId: number = 2,
+    chainId: number = 62,
     consistencyLevel: number = 15,
     queryId?: bigint
 ): Promise<void> {
@@ -144,18 +211,25 @@ export async function sendTonComment(
     const wallet = WalletContractV4.create({ workchain: 0, publicKey: keyPair.publicKey });
     const contract = client.open(wallet);
 
-    // Expect 32-byte destination address as hex (e.g., EVM address without 0x or with 0x)
+    // Parse destination address: can be TON address or 32-byte hex (e.g., EVM address)
     const toBuffer = (() => {
         if (!toHex) return Buffer.alloc(32); // default zero address if not provided
-        const cleaned = toHex.startsWith("0x") ? toHex.slice(2) : toHex;
-        const buf = Buffer.from(cleaned.padStart(64, "0"), "hex");
-        if (buf.length !== 32) {
-            throw new Error("to must be a 32-byte hex string");
+        
+        // Try to parse as TON address first
+        try {
+            const tonAddr = Address.parse(toHex);
+            // Extract the 256-bit hash from TON address
+            return tonAddr.hash;
+        } catch (e) {
+            // Not a TON address, try as hex string
+            const cleaned = toHex.startsWith("0x") ? toHex.slice(2) : toHex;
+            const buf = Buffer.from(cleaned.padStart(64, "0"), "hex");
+            if (buf.length !== 32) {
+                throw new Error("to must be a valid TON address or 32-byte hex string");
+            }
+            return buf;
         }
-        return buf;
     })();
-
-    const commentCell = beginCell().storeStringTail(commentText).endCell();
 
     const body = beginCell()
         .storeUint(OP_SEND_COMMENT, 32)
@@ -163,7 +237,7 @@ export async function sendTonComment(
         .storeUint(consistencyLevel & 0xff, 8)
         .storeUint(chainId & 0xffff, 16)
         .storeBuffer(toBuffer, 32)
-        .storeRef(commentCell)
+        .storeStringRefTail(commentText)
         .endCell();
 
     const seqno = await contract.getSeqno();
