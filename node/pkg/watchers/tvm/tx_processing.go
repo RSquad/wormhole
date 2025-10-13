@@ -273,9 +273,8 @@ func cellToBytesSnake(cur *cell.Cell) ([]byte, error) {
 		if bits%8 != 0 {
 			return nil, fmt.Errorf("cell has non byte-aligned size: %d bits", bits)
 		}
-		byteLen := bits / 8
 
-		v, err := s.LoadSlice(byteLen)
+		v, err := s.LoadSlice(bits)
 		if err != nil {
 			return nil, fmt.Errorf("s.LoadSlice: %w", err)
 		}

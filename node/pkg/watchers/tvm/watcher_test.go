@@ -1,11 +1,13 @@
 package tvm
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
-	"github.com/xssnick/tonutils-go/tvm/cell"
 	"testing"
 	"time"
+
+	"github.com/xssnick/tonutils-go/tvm/cell"
 
 	"github.com/certusone/wormhole/node/pkg/common"
 	gossipv1 "github.com/certusone/wormhole/node/pkg/proto/gossip/v1"
@@ -28,9 +30,20 @@ const (
 
 func TestCellToBytesSnake_MultiRef(t *testing.T) {
 	root := cell.BeginCell().MustStoreInt(15, 64).MustStoreSlice([]byte("test"), 32).MustStoreRef(cell.BeginCell().MustStoreInt(1, 32).EndCell())
-	_, err := cellToBytesSnake(root.EndCell())
+	got, err := cellToBytesSnake(root.EndCell())
 	if err != nil {
 		t.Fatalf("cellToBytesSnake error: %v", err)
+	}
+
+	// expected: 15 as 64-bit big-endian, then "test", then 1 as 32-bit big-endian
+	expectedHex := "000000000000000f7465737400000001"
+	expected, err := hex.DecodeString(expectedHex)
+	if err != nil {
+		t.Fatalf("bad hex for expected: %v", err)
+	}
+
+	if !bytes.Equal(got, expected) {
+		t.Fatalf("unexpected bytes: got %x, want %s", got, expectedHex)
 	}
 }
 
