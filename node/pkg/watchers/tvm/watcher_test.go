@@ -1,10 +1,13 @@
 package tvm
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"testing"
 	"time"
+
+	"github.com/xssnick/tonutils-go/tvm/cell"
 
 	"github.com/certusone/wormhole/node/pkg/common"
 	gossipv1 "github.com/certusone/wormhole/node/pkg/proto/gossip/v1"
@@ -24,6 +27,72 @@ const (
 
 	TestTimeout = 25 * time.Second
 )
+
+func TestCellToBytesSnake_MultiRef(t *testing.T) {
+	root := cell.BeginCell().MustStoreInt(15, 64).MustStoreSlice([]byte("test"), 32).MustStoreRef(cell.BeginCell().MustStoreInt(1, 32).EndCell())
+	got, err := cellToBytesSnake(root.EndCell())
+	if err != nil {
+		t.Fatalf("cellToBytesSnake error: %v", err)
+	}
+
+	// expected: 15 as 64-bit big-endian, then "test", then 1 as 32-bit big-endian
+	expectedHex := "000000000000000f7465737400000001"
+	expected, err := hex.DecodeString(expectedHex)
+	if err != nil {
+		t.Fatalf("bad hex for expected: %v", err)
+	}
+
+	if !bytes.Equal(got, expected) {
+		t.Fatalf("unexpected bytes: got %x, want %s", got, expectedHex)
+	}
+}
+
+func TestCellToBytesSnake_EmptyCell(t *testing.T) {
+	empty, err := makeSnake([][]byte{{}})
+	if err != nil {
+		t.Fatalf("makeSnake: %v", err)
+	}
+	got, err := cellToBytesSnake(empty)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("want empty, got %x", got)
+	}
+}
+
+func TestCellToBytesSnake_NonByteAligned_Head(t *testing.T) {
+	c, err := makeNonByteAlignedCell()
+	if err != nil {
+		t.Fatalf("makeNonByteAlignedCell: %v", err)
+	}
+	_, err = cellToBytesSnake(c)
+	if err == nil {
+		t.Fatalf("expected error for non byte-aligned head cell, got nil")
+	}
+}
+
+func TestCellToBytesSnake_NonByteAligned_Child(t *testing.T) {
+	child, err := makeNonByteAlignedCell()
+	if err != nil {
+		t.Fatalf("makeNonByteAlignedCell: %v", err)
+	}
+
+	b := cell.BeginCell()
+	sl := []byte("head")
+	if err := b.StoreSlice(sl, uint(len(sl))); err != nil {
+		t.Fatalf("StoreSlice: %v", err)
+	}
+	if err := b.StoreRef(child); err != nil {
+		t.Fatalf("StoreRef: %v", err)
+	}
+	root := b.EndCell()
+
+	_, err = cellToBytesSnake(root)
+	if err == nil {
+		t.Fatalf("expected error for non byte-aligned child cell, got nil")
+	}
+}
 
 func TestWatcher_Subscription_Reobservation_Head(t *testing.T) {
 	msgC := make(chan *common.MessagePublication, 16)
@@ -139,4 +208,34 @@ func waitObsvDrained(t *testing.T, ch <-chan *gossipv1.ObservationRequest, d tim
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("obsvReqC is not drained (len=%d) after %s", len(ch), d)
+}
+
+func makeSnake(chunks [][]byte) (*cell.Cell, error) {
+	var next *cell.Cell
+	for i := len(chunks) - 1; i >= 0; i-- {
+		b := cell.BeginCell()
+		if len(chunks[i]) > 0 {
+			if err := b.StoreSlice(chunks[i], uint(len(chunks[i]))); err != nil {
+				return nil, err
+			}
+		}
+		if next != nil {
+			if err := b.StoreRef(next); err != nil {
+				return nil, err
+			}
+		}
+		c := b.EndCell()
+
+		next = c
+	}
+
+	return next, nil
+}
+
+func makeNonByteAlignedCell() (*cell.Cell, error) {
+	b := cell.BeginCell()
+	if err := b.StoreUInt(1, 1); err != nil {
+		return nil, err
+	}
+	return b.EndCell(), nil
 }

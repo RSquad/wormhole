@@ -1,8 +1,10 @@
 package tvm
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -121,6 +123,11 @@ func (w *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobser
 			return fmt.Errorf("vaa.StringToAddress(messagePublishEvent.EmitterAddress): %w", err)
 		}
 
+		payload, err := cellToBytesSnake(messagePublishEvent.Payload)
+		if err != nil {
+			return fmt.Errorf("CellToBytesSnake(messagePublishEvent.Payload): %w", err)
+		}
+
 		observation := &common.MessagePublication{
 			TxID:             messagePublishEvent.TransactionID,
 			Timestamp:        time.Unix(int64(tx.Now), 0),
@@ -128,7 +135,7 @@ func (w *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobser
 			Sequence:         messagePublishEvent.Sequence,
 			EmitterChain:     w.chainID,
 			EmitterAddress:   emitterAddress,
-			Payload:          messagePublishEvent.Payload.ToBOC(),
+			Payload:          payload,
 			ConsistencyLevel: messagePublishEvent.ConsistencyLevel,
 			IsReobservation:  isReobservation,
 		}
@@ -254,4 +261,34 @@ func (ts *TxSubscriber) logFinishWork(err error) {
 			zap.String("addr", ts.addr.String()),
 		)
 	}
+}
+
+func cellToBytesSnake(cur *cell.Cell) ([]byte, error) {
+	var out bytes.Buffer
+
+	s := cur.BeginParse()
+
+	for s != nil {
+		bits := s.BitsLeft()
+		if bits%8 != 0 {
+			return nil, fmt.Errorf("cell has non byte-aligned size: %d bits", bits)
+		}
+
+		v, err := s.LoadSlice(bits)
+		if err != nil {
+			return nil, fmt.Errorf("s.LoadSlice: %w", err)
+		}
+		out.Write(v)
+
+		nxt, err := s.LoadRef()
+		if err != nil {
+			if !errors.Is(err, cell.ErrNoMoreRefs) {
+				return nil, fmt.Errorf("s.LoadRef: %w", err)
+			}
+		}
+
+		s = nxt
+	}
+
+	return out.Bytes(), nil
 }
