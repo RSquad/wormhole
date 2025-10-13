@@ -85,7 +85,7 @@ fun onParseAndVerifyVM(params: ParseAndVerifyVM) {
         guardianSet.expirationTime >= blockchain.now()
     ) throw ERROR_GUARDIAN_SET_EXPIRED;
     assert (vm.signaturesCount >= quorum(guardianSet.count)) throw ERROR_NO_QUORUM;
-    val signaturesValid = verifyVmSignatures(vmHash, guardianSet, vm.signatures);
+    val signaturesValid = verifyVmSignatures(vmHash, guardianSet, vm.signatures, vm.signaturesCount);
     assert(signaturesValid) throw ERROR_INVALID_VM_SIGNATURES;
 }
 
@@ -122,8 +122,13 @@ fun onBouncedMessage(in: InMessageBounced) {
 get fun verifyVM(vmCell: cell): bool {
     val storage = lazy Storage.load();
     val (vm, vmHash) = VM.parse(vmCell);
-    val signaturesValid = verifyVmSignatures(vmHash, storage.guardianSets.get(vm.guardianSetIndex).loadValue(), vm.signatures);
+    val signaturesValid = verifyVmSignatures(vmHash, storage.guardianSets.mustGet(vm.guardianSetIndex), vm.signatures, vm.signaturesCount);
     return signaturesValid;
+}
+
+get fun parseVM(vmCell: cell): (VM, uint256) {
+    val (vm, vmHash) = VM.parse(vmCell);
+    return (vm, vmHash);
 }
 
 get fun messageFee(): int {

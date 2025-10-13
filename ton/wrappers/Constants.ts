@@ -1,4 +1,7 @@
 export const TON_CHAIN_ID = 62;
+export const GUARDIAN_SET_EXPIRY = 0;
+export const GOVERNANCE_CHAIN_ID = 0;
+export const GOVERNANCE_CONTRACT = Buffer.alloc(32);
 
 export const Opcodes = {
     OP_PUBLISH_MESSAGE: 0x1ce51423,

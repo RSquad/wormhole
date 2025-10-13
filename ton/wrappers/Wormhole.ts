@@ -11,8 +11,11 @@ import {
     SendMode,
     Slice,
     TupleItem,
+    TupleReader,
 } from '@ton/core';
 import { Opcodes } from './Constants';
+import { GuardianSignature, ParsedVaa } from './Structs';
+import { writeCellsToBuffer } from './conversion';
 
 export type GuardianSet = {
     keys: Buffer[];
@@ -170,5 +173,39 @@ export class Wormhole implements Contract {
         const args: TupleItem[] = [{ type: 'slice', cell: beginCell().storeAddress(sender).endCell() }];
         const result = await provider.get('getSequence', args);
         return result.stack.readNumber();
+    }
+
+    async getParseVM(provider: ContractProvider, vmCell: Cell): Promise<ParsedVaa> {
+        const args: TupleItem[] = [{ type: 'cell', cell: vmCell }];
+        const result = await provider.get('parseVM', args);
+        const readSignatures = (stack: TupleReader): GuardianSignature[] => {
+            const dict = stack
+                .readCell()
+                .beginParse()
+                .loadDictDirect(Dictionary.Keys.Uint(8), SignatureDictionaryValue)
+                .values()
+                .map((value) => {
+                    return {
+                        index: value.guardianIndex,
+                        signature: value.signature,
+                    };
+                });
+            stack.skip(1);
+            return dict;
+        };
+        const vaa: ParsedVaa = {
+            version: result.stack.readNumber(),
+            guardianSetIndex: result.stack.readNumber(),
+            guardianSignatures: readSignatures(result.stack),
+            timestamp: result.stack.readNumber(),
+            nonce: result.stack.readNumber(),
+            emitterChain: result.stack.readNumber(),
+            emitterAddress: Buffer.from(result.stack.readBigNumber().toString(16).padStart(64, '0'), 'hex'),
+            sequence: result.stack.readBigNumber(),
+            consistencyLevel: result.stack.readNumber(),
+            payload: writeCellsToBuffer(result.stack.readCell()),
+            hash: Buffer.from(result.stack.readBigNumber().toString(16).padStart(64, '0'), 'hex'),
+        };
+        return vaa;
     }
 }
