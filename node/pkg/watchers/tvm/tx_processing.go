@@ -265,38 +265,30 @@ func (ts *TxSubscriber) logFinishWork(err error) {
 func CellToBytesSnake(cur *cell.Cell) ([]byte, error) {
 	var out bytes.Buffer
 
+	s := cur.BeginParse()
+
 	for cur != nil {
-		s := cur.BeginParse()
-
-		for {
-			rem := s.BitsLeft()
-			if rem >= 8 {
-				v, err := s.LoadUInt(8)
-				if err != nil {
-					return nil, fmt.Errorf("load byte: %w", err)
-				}
-				out.WriteByte(byte(v))
-				continue
-			}
-			if rem > 0 {
-				v, err := s.LoadUInt(uint(rem))
-				if err != nil {
-					return nil, fmt.Errorf("load tail %d bits: %w", rem, err)
-				}
-				out.WriteByte(byte(v) << (8 - rem))
-			}
-			break
+		bits := s.BitsLeft()
+		if bits%8 != 0 {
+			return nil, fmt.Errorf("cell has non byte-aligned size: %d bits", bits)
 		}
+		byteLen := bits / 8
 
-		if cur.RefsNum() > 0 {
-			nxt, err := s.LoadRef()
-			if err != nil {
-				return nil, fmt.Errorf("load ref(0): %w", err)
-			}
-			cur = nxt.MustToCell()
-		} else {
+		v, err := s.LoadSlice(byteLen)
+		if err != nil {
+			return nil, fmt.Errorf("s.LoadSlice: %w", err)
+		}
+		out.Write(v)
+
+		if cur.RefsNum() == 0 {
 			cur = nil
+			continue
 		}
+		nxt, err := s.LoadRef()
+		if err != nil {
+			return nil, fmt.Errorf("load ref(0): %w", err)
+		}
+		cur = nxt.MustToCell()
 	}
 
 	return out.Bytes(), nil
