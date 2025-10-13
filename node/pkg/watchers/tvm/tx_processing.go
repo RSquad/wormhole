@@ -267,7 +267,7 @@ func CellToBytesSnake(cur *cell.Cell) ([]byte, error) {
 
 	s := cur.BeginParse()
 
-	for cur != nil {
+	for s != nil {
 		bits := s.BitsLeft()
 		if bits%8 != 0 {
 			return nil, fmt.Errorf("cell has non byte-aligned size: %d bits", bits)
@@ -280,15 +280,11 @@ func CellToBytesSnake(cur *cell.Cell) ([]byte, error) {
 		}
 		out.Write(v)
 
-		if cur.RefsNum() == 0 {
-			cur = nil
-			continue
-		}
 		nxt, err := s.LoadRef()
 		if err != nil {
 			return nil, fmt.Errorf("load ref(0): %w", err)
 		}
-		cur = nxt.MustToCell()
+		s = nxt
 	}
 
 	return out.Bytes(), nil
