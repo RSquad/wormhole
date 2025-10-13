@@ -1,6 +1,7 @@
 package tvm
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -121,6 +122,11 @@ func (w *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobser
 			return fmt.Errorf("vaa.StringToAddress(messagePublishEvent.EmitterAddress): %w", err)
 		}
 
+		payload, err := CellToBytesSnake(messagePublishEvent.Payload)
+		if err != nil {
+			return fmt.Errorf("CellToBytesSnake(messagePublishEvent.Payload): %w", err)
+		}
+
 		observation := &common.MessagePublication{
 			TxID:             messagePublishEvent.TransactionID,
 			Timestamp:        time.Unix(int64(tx.Now), 0),
@@ -128,7 +134,7 @@ func (w *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobser
 			Sequence:         messagePublishEvent.Sequence,
 			EmitterChain:     w.chainID,
 			EmitterAddress:   emitterAddress,
-			Payload:          messagePublishEvent.Payload.ToBOC(),
+			Payload:          payload,
 			ConsistencyLevel: messagePublishEvent.ConsistencyLevel,
 			IsReobservation:  isReobservation,
 		}
@@ -254,4 +260,44 @@ func (ts *TxSubscriber) logFinishWork(err error) {
 			zap.String("addr", ts.addr.String()),
 		)
 	}
+}
+
+func CellToBytesSnake(cur *cell.Cell) ([]byte, error) {
+	var out bytes.Buffer
+
+	for cur != nil {
+		s := cur.BeginParse()
+
+		for {
+			rem := s.BitsLeft()
+			if rem >= 8 {
+				v, err := s.LoadUInt(8)
+				if err != nil {
+					return nil, fmt.Errorf("load byte: %w", err)
+				}
+				out.WriteByte(byte(v))
+				continue
+			}
+			if rem > 0 {
+				v, err := s.LoadUInt(uint(rem))
+				if err != nil {
+					return nil, fmt.Errorf("load tail %d bits: %w", rem, err)
+				}
+				out.WriteByte(byte(v) << (8 - rem))
+			}
+			break
+		}
+
+		if cur.RefsNum() > 0 {
+			nxt, err := s.LoadRef()
+			if err != nil {
+				return nil, fmt.Errorf("load ref(0): %w", err)
+			}
+			cur = nxt.MustToCell()
+		} else {
+			cur = nil
+		}
+	}
+
+	return out.Bytes(), nil
 }
