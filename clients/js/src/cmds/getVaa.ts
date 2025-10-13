@@ -88,14 +88,4 @@ export const handler = async (argv: Awaited<ReturnType<typeof builder>["argv"]>)
   } catch (e) {
     console.log("Не удалось распарсить VAA payload этим CLI, выводим только сырой vaa.");
   }
-};
-
-
-
-
-
-
-
-
-
-
+}

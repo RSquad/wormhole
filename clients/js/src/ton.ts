@@ -8,49 +8,65 @@ import {
     contracts,
 } from "@wormhole-foundation/sdk-base";
 
-function convertVAAToTonFormat(vaa: Buffer, parsedVaa: VAA<any>, recipientAddress: Address): Cell {
-    const signaturesDict = Dictionary.empty(
-        Dictionary.Keys.Uint(8),
-        {
-            serialize: (src: { signature: Buffer, guardianIndex: number }, builder) => {
-                builder.storeBuffer(src.signature, 65);
-                builder.storeUint(src.guardianIndex, 8);
-            },
-            parse: (src) => {
-                throw new Error("Not implemented");
-            }
-        }
-    );
-
-    parsedVaa.signatures.forEach((sig, index) => {
-        signaturesDict.set(index, {
-            signature: Buffer.from(sig.signature, 'hex'),
-            guardianIndex: sig.guardianSetIndex
-        });
-    });
-
-    let payloadCell: Cell;
-
-    if (parsedVaa.payload.type === 'Comment') {
-        const commentText = parsedVaa.payload.comment ||
-            (parsedVaa.payload.hex ? Buffer.from(parsedVaa.payload.hex, 'hex').toString('utf8') : '');
-        console.log(`Extracted comment text: "${commentText}"`);
-        console.log(`Recipient address: ${recipientAddress.toString()}`);
-
-        const commentCell = beginCell()
-            .storeStringTail(commentText)
-            .endCell();
-
-        payloadCell = beginCell()
-            .storeAddress(recipientAddress)
-            .storeRef(commentCell)
-            .endCell();
-    } else {
-        const payloadHex = (parsedVaa.payload as any).hex || '';
-        payloadCell = beginCell()
-            .storeBuffer(Buffer.from(payloadHex, 'hex'))
-            .endCell();
+    function isBoc(buf: Buffer): boolean {
+        return buf.length >= 4 && buf[0] === 0xb5 && buf[1] === 0xee && buf[2] === 0x9c && buf[3] === 0x72;
     }
+
+    function leftPadTo32(b: Buffer): Buffer {
+        if (b.length === 32) return b;
+        if (b.length > 32) throw new Error(`"to" field longer than 32 bytes (${b.length})`);
+        const out = Buffer.alloc(32);
+        b.copy(out, 32 - b.length);
+        return out;
+    }
+
+    /**CommentVaa = { chainId:uint16, to:uint256, comment:ref cell } */
+    function parseCommentVaaFromBoc(bocHex: string): { chainId: number; to: Buffer; comment: Cell } {
+        const raw = Buffer.from(bocHex, "hex");
+        if (!isBoc(raw)) throw new Error("Not a BOC (invalid magic)");
+        const [root] = Cell.fromBoc(raw);
+        const cs = root.beginParse();
+
+        const chainId = Number(cs.loadUint(16));
+        const to = Buffer.from(cs.loadBuffer(32));            // 32 байта как есть
+        const comment = cs.loadRef();                         // ref-ячейка
+
+        return { chainId, to, comment };
+    }
+
+    function convertVAAToTonFormat(vaa: Buffer, parsedVaa: VAA<any>, recipientAddress?: Address): Cell {
+        const signaturesDict = Dictionary.empty(
+            Dictionary.Keys.Uint(8),
+            {
+                serialize: (src: { signature: Buffer, guardianIndex: number }, builder) => {
+                    builder.storeBuffer(src.signature, 65);
+                    builder.storeUint(src.guardianIndex, 8);
+                },
+                parse: (src) => {
+                    throw new Error("Not implemented");
+                }
+            }
+        );
+
+        parsedVaa.signatures.forEach((sig, index) => {
+            signaturesDict.set(index, {
+                signature: Buffer.from(sig.signature, 'hex'),
+                guardianIndex: sig.guardianSetIndex
+            });
+        });
+
+        let payloadCell: Cell;
+
+
+            const {chainId, to, comment} = parseCommentVaaFromBoc(parsedVaa.payload.hex);
+
+            payloadCell = beginCell()
+                .storeUint(chainId & 0xffff, 16)
+                .storeBuffer(leftPadTo32(to), 32)
+                .storeRef(comment)
+                .endCell();
+
+            console.log(`Parsed CommentVaa from BOC: chainId=${chainId}, to=0x${to.toString("hex")}`);
 
     const tonVaa = beginCell()
         .storeUint(parsedVaa.version, 8)
@@ -68,6 +84,7 @@ function convertVAAToTonFormat(vaa: Buffer, parsedVaa: VAA<any>, recipientAddres
 
     return tonVaa;
 }
+
 export async function execute_ton(
     payload: Payload,
     vaa: Buffer,
@@ -86,39 +103,28 @@ export async function execute_ton(
     if (!networkConfig?.key) {
         throw new Error("No mnemonic/key for TON");
     }
-    
+
+
     const keyPair = await mnemonicToPrivateKey(networkConfig.key.split(" "));
     const wallet = WalletContractV4.create({
         workchain: 0,
         publicKey: keyPair.publicKey,
     });
-    
+
     const vaaCell = convertVAAToTonFormat(vaa, parsedVaa, wallet.address);
 
     console.log("Submitting vaa");
-    
-    if (!contract) {
-        throw new Error("Contract address is required for TON");
-    }
-    
     await sendTonTransaction(
         network,
         rpc,
         contract,
         "submit_vaa",
-       vaaCell
+        vaaCell
     );
 }
 
 const OP_RELAY_COMMENT = 0x327587B5;
 const OP_SEND_COMMENT = 0x222A627E;
-
-
-async function bufferToCellChain(buf: Payload): Cell {
-    //const boc = Buffer.from(buf.toString(), "base64");
-    const [cell] = Cell.fromBoc(buf);
-    return cell;
-}
 
 async function sendTonTransaction(
     network: Network,
@@ -211,11 +217,9 @@ export async function sendTonComment(
     const wallet = WalletContractV4.create({ workchain: 0, publicKey: keyPair.publicKey });
     const contract = client.open(wallet);
 
-    // Parse destination address: can be TON address or 32-byte hex (e.g., EVM address)
     const toBuffer = (() => {
         if (!toHex) return Buffer.alloc(32); // default zero address if not provided
-        
-        // Try to parse as TON address first
+
         try {
             const tonAddr = Address.parse(toHex);
             // Extract the 256-bit hash from TON address
