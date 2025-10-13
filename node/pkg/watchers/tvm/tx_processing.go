@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -122,7 +123,7 @@ func (w *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobser
 			return fmt.Errorf("vaa.StringToAddress(messagePublishEvent.EmitterAddress): %w", err)
 		}
 
-		payload, err := CellToBytesSnake(messagePublishEvent.Payload)
+		payload, err := cellToBytesSnake(messagePublishEvent.Payload)
 		if err != nil {
 			return fmt.Errorf("CellToBytesSnake(messagePublishEvent.Payload): %w", err)
 		}
@@ -262,7 +263,7 @@ func (ts *TxSubscriber) logFinishWork(err error) {
 	}
 }
 
-func CellToBytesSnake(cur *cell.Cell) ([]byte, error) {
+func cellToBytesSnake(cur *cell.Cell) ([]byte, error) {
 	var out bytes.Buffer
 
 	s := cur.BeginParse()
@@ -282,8 +283,11 @@ func CellToBytesSnake(cur *cell.Cell) ([]byte, error) {
 
 		nxt, err := s.LoadRef()
 		if err != nil {
-			return nil, fmt.Errorf("load ref(0): %w", err)
+			if !errors.Is(err, cell.ErrNoMoreRefs) {
+				return nil, fmt.Errorf("s.LoadRef: %w", err)
+			}
 		}
+
 		s = nxt
 	}
 
