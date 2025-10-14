@@ -126,11 +126,11 @@ def k8s_yaml_with_ns(objects):
 
 custom_build(
     'cli-gen',
-    'DOCKER_BUILDKIT=1 docker buildx build --progress=plain --platform linux/amd64 -f Dockerfile.cli --build-context wormhole-sdk-ts=/Users/marina/GolandProjects/wormhole-sdk-ts --load -t $EXPECTED_REF .',
+    'DOCKER_BUILDKIT=1 docker buildx build --progress=plain --platform linux/amd64 -f Dockerfile.cli --build-context wormhole-sdk-ts=../wormhole-sdk-ts --load -t $EXPECTED_REF .',
     deps=[
         'Dockerfile.cli',
         'clients/js',
-        '/Users/marina/GolandProjects/wormhole-sdk-ts',
+        '../wormhole-sdk-ts',
     ],
 )
 
