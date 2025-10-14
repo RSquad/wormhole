@@ -82,7 +82,6 @@ export const handler = async (
   const parsed_vaa = parse(buf);
 
   assertKnownPayload(parsed_vaa);
-  console.log(parsed_vaa.payload);
 
   const network = getNetwork(argv.network);
 
@@ -172,6 +171,7 @@ async function executeSubmit(
         throw new Error("Contract address is required for Comment relay");
       }
       const { relayCommentToEthereum } = await import("../evm");
+      console.log(parsedVaa.payload)
       await relayCommentToEthereum(
         buf,
         network,

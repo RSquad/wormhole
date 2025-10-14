@@ -59,11 +59,11 @@ export interface Other {
 }
 
 export interface Comment {
+  module: "Core";
   type: "Comment";
+  chainId: number;
   to: string;
   comment: string;
-  hex?: string;  // для raw данных, если нужно
-  ascii?: string; // для debug
 }
 
 // All the different types of payloads
@@ -115,27 +115,18 @@ export function parse(buffer: Buffer): VAA<Payload | Other> {
     .or(portalContractRecoverChainId("TokenBridge"))
     .or(portalContractRecoverChainId("NFTBridge"))
     .or(wormholeRelayerSetDefaultDeliveryProvider())
+      .or (commentParser())
   let payload: Payload | Other | null = parser.parse(vaa.payload);
   if (payload === null) {
     var hex = Buffer.from(vaa.payload).toString("hex")
     var ascii = Buffer.from(vaa.payload).toString("utf8");
-    if (vaa.emitterChain === 62) {
-      payload = {
-        type: "Comment",
-        hex,
-        ascii,
-      };
-    } else {
       payload = {
         type: "Other",
         hex,
         ascii,
       };
-    }
   } else {
     delete (payload as any)["tokenURILength"];
-    delete (payload as any)["chainId"];
-    delete (payload as any)["commentCellBoc"];
   }
   var myVAA = { ...vaa, payload };
 
@@ -780,6 +771,23 @@ function tokenBridgeAttestMetaParser(): P<TokenBridgeAttestMeta> {
         greedy: true,
         assert: (str) => str === "",
       })
+  );
+}
+
+function commentParser(): P<Comment> {
+  return new P(
+      new Parser()
+      .endianess("big")
+      .string("module", { length: () => 0, formatter: () => "Comment" })
+      .string("type",   { length: () => 0, formatter: () => "Comment" })
+
+          .uint16("chainId")
+          .buffer("to", { length: 32,
+            formatter: (arr) => Buffer.from(arr)})
+
+          .buffer("commentBytes",
+              { readUntil: "eof",
+                formatter: (arr: Uint8Array) => Buffer.from(arr).toString("utf8")},)
   );
 }
 

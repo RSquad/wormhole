@@ -901,6 +901,7 @@ export async function relayCommentToEthereum(
     throw Error(`No ${network} rpc defined for ${chain}`);
   }
 
+  console.log(vaa)
   const key = n.key;
   if (!key) {
     throw Error(`No ${network} key defined for ${chain}`);

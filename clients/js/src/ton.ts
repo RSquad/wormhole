@@ -7,10 +7,7 @@ import {
     Network,
     contracts,
 } from "@wormhole-foundation/sdk-base";
-
-    function isBoc(buf: Buffer): boolean {
-        return buf.length >= 4 && buf[0] === 0xb5 && buf[1] === 0xee && buf[2] === 0x9c && buf[3] === 0x72;
-    }
+import {stringToCell} from "@ton/core/dist/boc/utils/strings";
 
     function leftPadTo32(b: Buffer): Buffer {
         if (b.length === 32) return b;
@@ -20,21 +17,58 @@ import {
         return out;
     }
 
-    /**CommentVaa = { chainId:uint16, to:uint256, comment:ref cell } */
-    function parseCommentVaaFromBoc(bocHex: string): { chainId: number; to: Buffer; comment: Cell } {
-        const raw = Buffer.from(bocHex, "hex");
-        if (!isBoc(raw)) throw new Error("Not a BOC (invalid magic)");
-        const [root] = Cell.fromBoc(raw);
-        const cs = root.beginParse();
+function bytesToCellSnake(data: Uint8Array): Cell {
+    const CHUNK_BITS = 1023;
+    const CHUNK_BYTES = Math.floor(CHUNK_BITS / 8); // 127
 
-        const chainId = Number(cs.loadUint(16));
-        const to = Buffer.from(cs.loadBuffer(32));            // 32 байта как есть
-        const comment = cs.loadRef();                         // ref-ячейка
+    if (data.length === 0) return beginCell().endCell();
 
-        return { chainId, to, comment };
+    const chunks: Uint8Array[] = [];
+    for (let i = 0; i < data.length; i += CHUNK_BYTES) {
+        chunks.push(data.slice(i, i + CHUNK_BYTES));
     }
 
-    function convertVAAToTonFormat(vaa: Buffer, parsedVaa: VAA<any>, recipientAddress?: Address): Cell {
+    let next: Cell | null = null;
+    for (let i = chunks.length - 1; i >= 0; i--) {
+        const b = beginCell().storeBuffer(chunks[i]);
+        if (next) b.storeRef(next);
+        next = b.endCell();
+    }
+    // next гарантированно не null, т.к. data.length > 0
+    return next!;
+}
+
+/**
+ * Парсит CommentVaa из «змейки» (НЕ BOC).
+ * Формат:
+ *  - 2 байта: chainId (big-endian)
+ *  - 32 байта: to (uint256)
+ *  - остаток: comment как snake-цепочка (восстанавливаем в Cell)
+ */
+export function parseCommentVaaFromSnakeHex(
+    snakeHex: string
+): { chainId: number; to: Buffer; comment: Cell } {
+    const buf = Buffer.from(snakeHex.replace(/^0x/, ""), "hex");
+
+    if (buf.length < 2 + 32) {
+        throw new Error(
+            `Too short payload: got ${buf.length} bytes, need at least 34`
+        );
+    }
+
+    // TON storeUint(16) — по сути big-endian; читаем как big-endian
+    const chainId = (buf[0] << 8) | buf[1];
+
+    const to = Buffer.from(buf.subarray(2, 34));
+
+    const commentBytes = buf.subarray(34); // может быть пусто — тогда вернём пустую ячейку
+    const comment = bytesToCellSnake(commentBytes);
+
+    return { chainId, to, comment };
+}
+
+
+    function convertVAAToTonFormat(payload: Payload, parsedVaa: VAA<any>, recipientAddress?: Address): Cell {
         const signaturesDict = Dictionary.empty(
             Dictionary.Keys.Uint(8),
             {
@@ -57,16 +91,14 @@ import {
 
         let payloadCell: Cell;
 
-
-            const {chainId, to, comment} = parseCommentVaaFromBoc(parsedVaa.payload.hex);
-
+        console.log(parsedVaa.payload.commentBytes)
             payloadCell = beginCell()
-                .storeUint(chainId & 0xffff, 16)
-                .storeBuffer(leftPadTo32(to), 32)
-                .storeRef(comment)
+                .storeUint(parsedVaa.payload.chainId & 0xffff, 16)
+                .storeBuffer(parsedVaa.payload.to, 32)
+                .storeRef(stringToCell(parsedVaa.payload.commentBytes))
                 .endCell();
 
-            console.log(`Parsed CommentVaa from BOC: chainId=${chainId}, to=0x${to.toString("hex")}`);
+           console.log(`Parsed CommentVaa from BOC: chainId=${parsedVaa.payload.chainId}, to=0x${parsedVaa.payload.to}`);
 
     const tonVaa = beginCell()
         .storeUint(parsedVaa.version, 8)
@@ -111,7 +143,8 @@ export async function execute_ton(
         publicKey: keyPair.publicKey,
     });
 
-    const vaaCell = convertVAAToTonFormat(vaa, parsedVaa, wallet.address);
+    console.log(parsedVaa)
+    const vaaCell = convertVAAToTonFormat(payload, parsedVaa, wallet.address);
 
     console.log("Submitting vaa");
     await sendTonTransaction(
@@ -167,7 +200,7 @@ async function sendTonTransaction(
 
     console.log(`Preparing RelayComment message to Integrator contract...`);
     console.log(`Contract address: ${contractAddress}`);
-    console.log(`VAA size: ${vaaCell.bits.length} bits, ${vaaCell.refs.length} refs`);
+    //console.log(`VAA size: ${vaaCell.bits.length} bits, ${vaaCell.refs.length} refs`);
 
     const seqno = await contract.getSeqno();
     
