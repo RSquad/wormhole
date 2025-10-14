@@ -124,15 +124,10 @@ if not ci:
 def k8s_yaml_with_ns(objects):
     return k8s_yaml(namespace_inject(objects, namespace))
 
-custom_build(
-    'cli-gen',
-    'DOCKER_BUILDKIT=1 docker buildx build --progress=plain --platform linux/amd64 -f Dockerfile.cli --build-context wormhole-sdk-ts=../wormhole-sdk-ts --load -t $EXPECTED_REF .',
-    deps=[
-        'Dockerfile.cli',
-        'clients/js',
-        '../wormhole-sdk-ts',
-    ],
-)
+docker_build(
+    ref = "cli-gen",
+    context = ".",
+    dockerfile = "Dockerfile.cli",
 
 docker_build(
     ref = "const-gen",
