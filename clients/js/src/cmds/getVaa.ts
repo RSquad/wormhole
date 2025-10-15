@@ -82,7 +82,13 @@ export const handler = async (argv: Awaited<ReturnType<typeof builder>["argv"]>)
     console.log(`  payload.type: ${t}`);
     if (t === "Comment") {
       const p = parsed.payload as any;
-      console.log('  payload.to:', p.to);
+      if (p.to) {
+        const toHex = Buffer.from(p.to).toString("hex");
+
+        const prefix = p.chain_id === 62 ? "0:" : "0x";
+
+        console.log("  payload.to:", prefix + toHex);
+      }
       console.log(`  payload.comment: ${p.commentBytes}`);
     }
   } catch (e) {

@@ -929,7 +929,7 @@ export async function relayCommentToEthereum(
   
   const receipt = await tx.wait();
   console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
-  console.log(`VAA успешно доставлен в Ethereum`);
+  console.log(`VAA successfully delivered to Ethereum`);
   
   return tx.hash;
 }

@@ -91,6 +91,22 @@ export function parseCommentVaaFromSnakeHex(
 
         let payloadCell: Cell;
 
+        console.log("payload.type:", "Comment");
+
+        console.log("payload.chain_id:", parsedVaa.payload.chainId);
+
+        const toBuf: Buffer =
+            Buffer.isBuffer(parsedVaa.payload.to) ? parsedVaa.payload.to : Buffer.from(parsedVaa.payload.to as Uint8Array);
+        const toHex = toBuf.toString("hex");
+        const toPrefix = parsedVaa.payload.chainId === 62 ? "0:" : "0x";
+        console.log("payload.to:", toPrefix + toHex);
+
+        const commentStr =
+            typeof parsedVaa.payload.commentBytes === "string"
+                ? parsedVaa.payload.commentBytes
+                : Buffer.from(parsedVaa.payload.commentBytes as Uint8Array).toString("utf8");
+        console.log("payload.comment:", commentStr);
+
         console.log(parsedVaa.payload.commentBytes)
             payloadCell = beginCell()
                 .storeUint(parsedVaa.payload.chainId & 0xffff, 16)
