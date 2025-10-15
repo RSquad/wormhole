@@ -27,7 +27,11 @@ contract CommentIntegrator {
         uint64 sequence
     );
     
-    event CommentReceived(uint16 indexed fromChainId, bytes32 from, uint16 chainId, bytes32 to, string comment);
+    event CommentReceived( 
+        uint16 indexed fromChainId,
+        bytes32 indexed from, 
+        bytes32 indexed to,
+        string comment);
     
     constructor(address _wormhole) {
         require(_wormhole != address(0), "Invalid wormhole address");
@@ -64,7 +68,7 @@ contract CommentIntegrator {
      * @notice Relay a comment received from another chain
      * @param encodedVaa The VAA containing the comment
      */
-    function relayComment(bytes memory encodedVaa) public returns (bool) {
+    function relayComment(bytes memory encodedVaa) external {
         (IWormhole.VM memory vm, bool valid, string memory reason) = 
             IWormhole(wormhole).parseAndVerifyVM(encodedVaa);
         
@@ -75,23 +79,9 @@ contract CommentIntegrator {
         emit CommentReceived(
             vm.emitterChainId,
             vm.emitterAddress,
-            commentVaa.chainId,
-            commentVaa.to, 
+            commentVaa.to,
             commentVaa.comment
         );
-        
-        // Optional: implement callback to recipient
-        // This allows contracts to handle incoming comments
-        // (bool success, ) = commentVaa.to.call(
-        //     abi.encodeWithSignature(
-        //         "onCommentReceived(uint16,bytes32,string)",
-        //         vm.emitterChainId,
-        //         vm.emitterAddress,
-        //         commentVaa.comment
-        //     )
-        // );
-        // Note: we don't revert on failure to allow EOA recipients
-        return true;
     }
     
     /**
@@ -105,8 +95,8 @@ contract CommentIntegrator {
     {
         return abi.encodePacked(
             chainId,
-            to,                          // 32 bytes
-            bytes(comment)               // variable length
+            to,                    // 32 bytes
+            comment               // variable length
         );
     }
     
