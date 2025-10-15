@@ -6,8 +6,6 @@ config({ path: `${homedir()}/.wormhole/.env` });
 
 const getEnvVar = (varName: string): string | undefined => process.env[varName];
 
-console.log("ENV PATH:", `${homedir()}/.wormhole/.env`);
-
 export type Connection = {
   rpc: string | undefined;
   key: string | undefined;

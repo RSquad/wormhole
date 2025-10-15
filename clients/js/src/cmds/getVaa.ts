@@ -92,6 +92,6 @@ export const handler = async (argv: Awaited<ReturnType<typeof builder>["argv"]>)
       console.log(`  payload.comment: ${p.commentBytes}`);
     }
   } catch (e) {
-    console.log("Не удалось распарсить VAA payload этим CLI, выводим только сырой vaa.");
+    console.log("Parsing VAA payload unsuccessful, only raw vaa available.");
   }
 }

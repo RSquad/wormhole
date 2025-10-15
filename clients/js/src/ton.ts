@@ -1,72 +1,13 @@
-import { Address, beginCell, Cell, OpenedContract, TonClient, WalletContractV4, internal, Dictionary } from "@ton/ton";
+import { Address, beginCell, Cell, TonClient, WalletContractV4, internal, Dictionary } from "@ton/ton";
 import { mnemonicToPrivateKey } from "@ton/crypto";
 import { NETWORKS } from "./consts";
-import { Payload, impossible, VAA } from "./vaa";
+import { Payload, VAA } from "./vaa";
 import {
     Chain,
     Network,
     contracts,
 } from "@wormhole-foundation/sdk-base";
 import {stringToCell} from "@ton/core/dist/boc/utils/strings";
-
-    function leftPadTo32(b: Buffer): Buffer {
-        if (b.length === 32) return b;
-        if (b.length > 32) throw new Error(`"to" field longer than 32 bytes (${b.length})`);
-        const out = Buffer.alloc(32);
-        b.copy(out, 32 - b.length);
-        return out;
-    }
-
-function bytesToCellSnake(data: Uint8Array): Cell {
-    const CHUNK_BITS = 1023;
-    const CHUNK_BYTES = Math.floor(CHUNK_BITS / 8); // 127
-
-    if (data.length === 0) return beginCell().endCell();
-
-    const chunks: Uint8Array[] = [];
-    for (let i = 0; i < data.length; i += CHUNK_BYTES) {
-        chunks.push(data.slice(i, i + CHUNK_BYTES));
-    }
-
-    let next: Cell | null = null;
-    for (let i = chunks.length - 1; i >= 0; i--) {
-        const b = beginCell().storeBuffer(chunks[i]);
-        if (next) b.storeRef(next);
-        next = b.endCell();
-    }
-    // next гарантированно не null, т.к. data.length > 0
-    return next!;
-}
-
-/**
- * Парсит CommentVaa из «змейки» (НЕ BOC).
- * Формат:
- *  - 2 байта: chainId (big-endian)
- *  - 32 байта: to (uint256)
- *  - остаток: comment как snake-цепочка (восстанавливаем в Cell)
- */
-export function parseCommentVaaFromSnakeHex(
-    snakeHex: string
-): { chainId: number; to: Buffer; comment: Cell } {
-    const buf = Buffer.from(snakeHex.replace(/^0x/, ""), "hex");
-
-    if (buf.length < 2 + 32) {
-        throw new Error(
-            `Too short payload: got ${buf.length} bytes, need at least 34`
-        );
-    }
-
-    // TON storeUint(16) — по сути big-endian; читаем как big-endian
-    const chainId = (buf[0] << 8) | buf[1];
-
-    const to = Buffer.from(buf.subarray(2, 34));
-
-    const commentBytes = buf.subarray(34); // может быть пусто — тогда вернём пустую ячейку
-    const comment = bytesToCellSnake(commentBytes);
-
-    return { chainId, to, comment };
-}
-
 
     function convertVAAToTonFormat(payload: Payload, parsedVaa: VAA<any>, recipientAddress?: Address): Cell {
         const signaturesDict = Dictionary.empty(
@@ -216,7 +157,6 @@ async function sendTonTransaction(
 
     console.log(`Preparing RelayComment message to Integrator contract...`);
     console.log(`Contract address: ${contractAddress}`);
-    //console.log(`VAA size: ${vaaCell.bits.length} bits, ${vaaCell.refs.length} refs`);
 
     const seqno = await contract.getSeqno();
     
