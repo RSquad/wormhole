@@ -20,11 +20,10 @@ function serialize(comment: string, destHex32: string, chainIdStr: string): Buff
         throw new Error('Destination must be 32 bytes hex (64 hex chars), with optional 0x prefix');
     }
 
-    const out = Buffer.allocUnsafe(2 + 32 + 2 + commentBytes.length);
+    const out = Buffer.allocUnsafe(2 + 32 + commentBytes.length);
     out.writeUInt16BE(chainId, 0);
     hex32ToBuffer(destHex32).copy(out, 2);
-    out.writeUInt16BE(commentBytes.length, 34);
-    commentBytes.copy(out, 36);
+    commentBytes.copy(out, 34);
     return out;
 }
 
