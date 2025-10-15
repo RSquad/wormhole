@@ -45,8 +45,7 @@ contract MockWormhole {
         returns (VM memory vm, bool valid, string memory reason) 
     {
         require(encodedVM.length > 0, "Empty VAA");
-        
-        // Упрощенный парсинг - просто возвращаем минимальные данные
+
         vm.version = 1;
         vm.guardianSetIndex = 0;
         vm.timestamp = 0;
@@ -55,9 +54,7 @@ contract MockWormhole {
         vm.emitterAddress = bytes32(0);
         vm.sequence = 1;
         vm.consistencyLevel = 1;
-        
-        // Извлекаем payload (находится после заголовка VAA)
-        // Для упрощения берем все после 6+sigCount*66+57 байт
+
         uint8 sigCount = uint8(encodedVM[6]);
         uint256 payloadStart = 6 + 1 + sigCount * 66 + 4 + 4 + 2 + 32 + 8 + 1;
         
@@ -66,8 +63,7 @@ contract MockWormhole {
         } else {
             vm.payload = new bytes(0);
         }
-        
-        // Всегда возвращаем valid = true для тестирования
+
         valid = true;
         reason = "";
     }

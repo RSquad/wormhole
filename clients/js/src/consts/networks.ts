@@ -800,7 +800,7 @@ const Devnet = {
   },
   Ton: {
     rpc: "https://testnet.toncenter.com/api/v2/jsonRPC?api_key=ec01c33940842fbf719fe2a2f6dc458c4f433e14e7d5f04dcb2b65a00b115dd2",
-    key: getEnvVar("TON_MNEMONIC_TESTNET"),
+    key: getEnvVar("TON_MNEMONIC"),
   },
 };
 

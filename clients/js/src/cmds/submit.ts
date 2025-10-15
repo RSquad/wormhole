@@ -166,29 +166,14 @@ async function executeSubmit(
   contractAddress: string | undefined
 ) {
   if (chainToPlatform(chain) === "Evm") {
-    if (parsedVaa.payload.type === "Comment") {
-      if (!contractAddress) {
-        throw new Error("Contract address is required for Comment relay");
-      }
-      const { relayCommentToEthereum } = await import("../evm");
-      console.log(parsedVaa.payload)
-      await relayCommentToEthereum(
-        buf,
-        network,
-        chain as PlatformToChains<"Evm">,
-        contractAddress,
-        rpc
-      );
-    } else {
-      await execute_evm(
+    await execute_evm(
         parsedVaa.payload,
         buf,
         network,
         chain as PlatformToChains<"Evm">,
         contractAddress,
         rpc
-      );
-    }
+    );
   } else if (chain === "Terra" || chain === "Terra2") {
     await execute_terra(parsedVaa.payload, buf, network, chain);
   } else if (chain === "Solana" || chain === "Pythnet") {

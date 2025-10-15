@@ -100,7 +100,6 @@ export async function execute_ton(
         publicKey: keyPair.publicKey,
     });
 
-    console.log(parsedVaa)
     const vaaCell = convertVAAToTonFormat(payload, parsedVaa, wallet.address);
 
     console.log("Submitting vaa");
