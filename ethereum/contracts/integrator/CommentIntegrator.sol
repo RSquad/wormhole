@@ -15,23 +15,19 @@ contract CommentIntegrator {
     address public wormhole;
     
     struct CommentVaa {
-        address to;
+        uint16 chainId;
+        bytes32 to;
         string comment;
     }
     
     event CommentSent(
         address indexed sender, 
-        address indexed to, 
+        bytes32 indexed to, 
         string comment, 
         uint64 sequence
     );
     
-    event CommentReceived(
-        uint16 indexed fromChain,
-        bytes32 indexed fromAddress,
-        address indexed to, 
-        string comment
-    );
+    event CommentReceived(uint16 indexed fromChainId, bytes32 from, uint16 chainId, bytes32 to, string comment);
     
     constructor(address _wormhole) {
         require(_wormhole != address(0), "Invalid wormhole address");
@@ -47,12 +43,13 @@ contract CommentIntegrator {
      * @return sequence The sequence number of the published message
      */
     function sendComment(
-        address to,
+        uint16 chainId,
+        bytes32 to,
         string memory comment,
         uint32 nonce,
         uint8 consistencyLevel
     ) external payable returns (uint64 sequence) {
-        bytes memory payload = encodeCommentVaa(to, comment);
+        bytes memory payload = encodeCommentVaa(chainId, to, comment);
         
         sequence = IWormhole(wormhole).publishMessage{value: msg.value}(
             nonce,
@@ -67,7 +64,7 @@ contract CommentIntegrator {
      * @notice Relay a comment received from another chain
      * @param encodedVaa The VAA containing the comment
      */
-    function relayComment(bytes memory encodedVaa) external {
+    function relayComment(bytes memory encodedVaa) public returns (bool) {
         (IWormhole.VM memory vm, bool valid, string memory reason) = 
             IWormhole(wormhole).parseAndVerifyVM(encodedVaa);
         
@@ -78,6 +75,7 @@ contract CommentIntegrator {
         emit CommentReceived(
             vm.emitterChainId,
             vm.emitterAddress,
+            commentVaa.chainId,
             commentVaa.to, 
             commentVaa.comment
         );
@@ -93,6 +91,7 @@ contract CommentIntegrator {
         //     )
         // );
         // Note: we don't revert on failure to allow EOA recipients
+        return true;
     }
     
     /**
@@ -101,12 +100,12 @@ contract CommentIntegrator {
      * @param comment Comment text
      * @return Encoded payload
      */
-    function encodeCommentVaa(address to, string memory comment) 
+    function encodeCommentVaa(uint16 chainId, bytes32 to, string memory comment) 
         public pure returns (bytes memory) 
     {
         return abi.encodePacked(
-            to,                          // 20 bytes
-            uint16(bytes(comment).length), // 2 bytes
+            chainId,
+            to,                          // 32 bytes
             bytes(comment)               // variable length
         );
     }
@@ -122,18 +121,17 @@ contract CommentIntegrator {
         require(payload.length >= 22, "Payload too short");
         
         uint256 index = 0;
-        
-        address to = payload.toAddress(index);
-        index += 20;
-        
-        uint16 commentLength = payload.toUint16(index);
+
+        uint16 chainId = payload.toUint16(index);
         index += 2;
         
-        require(payload.length >= index + commentLength, "Invalid comment length");
+        bytes32 to = payload.toBytes32(index);
+        index += 32;
         
-        string memory comment = string(payload.slice(index, commentLength));
+        string memory comment = string(payload.slice(index, payload.length - index));
         
         return CommentVaa({
+            chainId: chainId,
             to: to,
             comment: comment
         });
