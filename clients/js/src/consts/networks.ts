@@ -6,6 +6,8 @@ config({ path: `${homedir()}/.wormhole/.env` });
 
 const getEnvVar = (varName: string): string | undefined => process.env[varName];
 
+console.log("ENV PATH:", `${homedir()}/.wormhole/.env`);
+
 export type Connection = {
   rpc: string | undefined;
   key: string | undefined;
@@ -206,10 +208,6 @@ const Mainnet = {
     rpc: undefined,
     key: undefined,
     chain_id: undefined,
-  },
-  Ton: {
-    rpc: "https://testnet.toncenter.com/api/v2/jsonRPC?api_key=ec01c33940842fbf719fe2a2f6dc458c4f433e14e7d5f04dcb2b65a00b115dd2",
-    key: "time violin thank faith else ceiling question shrimp narrow trip ready tell anger ivory fiber sad immense gorilla mix defense drink lizard patch model",
   },
   Sepolia: {
     rpc: undefined,
@@ -556,10 +554,6 @@ const Testnet = {
     key: undefined,
     chain_id: undefined,
   },
-  Ton: {
-    rpc: "https://testnet.toncenter.com/api/v2/jsonRPC?api_key=ec01c33940842fbf719fe2a2f6dc458c4f433e14e7d5f04dcb2b65a00b115dd2",
-    key: "time violin thank faith else ceiling question shrimp narrow trip ready tell anger ivory fiber sad immense gorilla mix defense drink lizard patch model",
-  },
 };
 
 const Devnet = {
@@ -808,7 +802,7 @@ const Devnet = {
   },
   Ton: {
     rpc: "https://testnet.toncenter.com/api/v2/jsonRPC?api_key=ec01c33940842fbf719fe2a2f6dc458c4f433e14e7d5f04dcb2b65a00b115dd2",
-    key: "time violin thank faith else ceiling question shrimp narrow trip ready tell anger ivory fiber sad immense gorilla mix defense drink lizard patch model",
+    key: getEnvVar("TON_MNEMONIC_TESTNET"),
   },
 };
 

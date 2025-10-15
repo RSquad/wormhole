@@ -82,8 +82,8 @@ export const handler = async (argv: Awaited<ReturnType<typeof builder>["argv"]>)
     console.log(`  payload.type: ${t}`);
     if (t === "Comment") {
       const p = parsed.payload as any;
-      console.log(`  payload.to: ${p.to}`);
-      if (p.comment) console.log(`  payload.comment: ${p.comment}`);
+      console.log('  payload.to:', p.to);
+      console.log(`  payload.comment: ${p.commentBytes}`);
     }
   } catch (e) {
     console.log("Не удалось распарсить VAA payload этим CLI, выводим только сырой vaa.");
