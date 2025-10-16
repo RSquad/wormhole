@@ -48,14 +48,12 @@ import {stringToCell} from "@ton/core/dist/boc/utils/strings";
                 : Buffer.from(parsedVaa.payload.commentBytes as Uint8Array).toString("utf8");
         console.log("payload.comment:", commentStr);
 
-        console.log(parsedVaa.payload.commentBytes)
             payloadCell = beginCell()
                 .storeUint(parsedVaa.payload.chainId & 0xffff, 16)
                 .storeBuffer(parsedVaa.payload.to, 32)
                 .storeRef(stringToCell(parsedVaa.payload.commentBytes))
                 .endCell();
 
-           console.log(`Parsed CommentVaa from BOC: chainId=${parsedVaa.payload.chainId}, to=0x${parsedVaa.payload.to}`);
 
     const tonVaa = beginCell()
         .storeUint(parsedVaa.version, 8)
@@ -102,7 +100,6 @@ export async function execute_ton(
 
     const vaaCell = convertVAAToTonFormat(payload, parsedVaa, wallet.address);
 
-    console.log("Submitting vaa");
     await sendTonTransaction(
         network,
         rpc,
