@@ -190,7 +190,6 @@ export async function sendTonComment(
     toHex?: string,
     chainId: number = 62,
     consistencyLevel: number = 15,
-    queryId?: bigint
 ): Promise<void> {
     const networkConfig = NETWORKS[network]["Ton"];
     if (!networkConfig?.key) throw new Error("No mnemonic/key for TON");
@@ -220,16 +219,21 @@ export async function sendTonComment(
         }
     })();
 
+    const queryId = BigInt(Date.now());
+
     const body = beginCell()
         .storeUint(OP_SEND_COMMENT, 32)
-        .storeUint(queryId ?? BigInt(Date.now()), 64)
+        .storeUint(queryId, 64)
         .storeUint(consistencyLevel & 0xff, 8)
         .storeUint(chainId & 0xffff, 16)
         .storeBuffer(toBuffer, 32)
         .storeStringRefTail(commentText)
         .endCell();
 
-    let seqno = await contract.getSeqno();
+    const stateBefore = await client.getContractState(contract.address).catch(() => undefined as any);
+    const prevLt: bigint = BigInt(stateBefore?.lastTransaction?.lt);
+
+    const seqno = await contract.getSeqno();
 
     await contract.sendTransfer({
         seqno,
@@ -243,26 +247,29 @@ export async function sendTonComment(
         ],
     });
 
-    await waitForTx(client,contract.address)
+    await waitForTx(client,contract.address,prevLt)
 
     console.log(`Message sent to Integrator ${integratorAddress}`);
-    console.log(`QueryId: ${queryId ?? BigInt(Date.now())}`);
+    console.log(`QueryId: ${queryId}`);
     console.log("Transaction confirmed");
 }
 
-async function waitForTx(client: TonClient, addr: Address, timeoutMs = 50000) {
+async function waitForTx(client: TonClient, addr: Address,  prevLt?: bigint, timeoutMs = 50000) {
     const start = Date.now();
 
     for (; ;) {
         const txs = await client.getTransactions(addr, {limit: 1}).catch(() => []);
         if (txs.length > 0) {
-            return;
-        }
+            const tx = txs[0];
+            if (tx.lt > prevLt) {
+            return
+            }
 
-        if (Date.now() - start > timeoutMs) {
-            throw new Error("Timeout waiting for transaction to be applied");
+            if (Date.now() - start > timeoutMs) {
+                throw new Error("Timeout waiting for transaction to be applied");
+            }
+            await new Promise(r => setTimeout(r, 1500));
         }
-        await new Promise(r => setTimeout(r, 1500));
     }
 }
 
