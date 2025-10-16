@@ -495,8 +495,11 @@ export async function execute_evm(
       break;
     default:
       if (payload.type === "Comment") {
+        if (!contract_address) {
+          throw Error(`Integrator address is required`);
+        }
         await relayCommentToEthereum(
-            buf,
+            vaa,
             network,
             chain as PlatformToChains<"Evm">,
             contract_address,
