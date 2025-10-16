@@ -1,4 +1,4 @@
-import { Address, beginCell, Cell, TonClient, WalletContractV4, internal, Dictionary } from "@ton/ton";
+import {Address, beginCell, Cell, TonClient, WalletContractV4, internal, Dictionary, address} from "@ton/ton";
 import { mnemonicToPrivateKey } from "@ton/crypto";
 import { NETWORKS } from "./consts";
 import { Payload, VAA } from "./vaa";
@@ -229,28 +229,41 @@ export async function sendTonComment(
         .storeStringRefTail(commentText)
         .endCell();
 
-    const seqno = await contract.getSeqno();
+    let seqno = await contract.getSeqno();
+
     await contract.sendTransfer({
         seqno,
         secretKey: keyPair.secretKey,
         messages: [
             internal({
                 to: Address.parse(integratorAddress),
-                value: BigInt(200000000),
+                value: BigInt(100000000),
                 body,
             })
         ],
     });
 
+    await waitForTx(client,contract.address)
+
     console.log(`Message sent to Integrator ${integratorAddress}`);
     console.log(`QueryId: ${queryId ?? BigInt(Date.now())}`);
-
-    let currentSeqno = seqno;
-    while (currentSeqno === seqno) {
-        await new Promise(r => setTimeout(r, 1500));
-        currentSeqno = await contract.getSeqno();
-    }
     console.log("Transaction confirmed");
+}
+
+async function waitForTx(client: TonClient, addr: Address, timeoutMs = 50000) {
+    const start = Date.now();
+
+    for (; ;) {
+        const txs = await client.getTransactions(addr, {limit: 1}).catch(() => []);
+        if (txs.length > 0) {
+            return;
+        }
+
+        if (Date.now() - start > timeoutMs) {
+            throw new Error("Timeout waiting for transaction to be applied");
+        }
+        await new Promise(r => setTimeout(r, 1500));
+    }
 }
 
 export async function queryRegistrationsTon(
