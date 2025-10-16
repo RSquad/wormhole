@@ -86,7 +86,7 @@ fun onParseAndVerifyVM(params: ParseAndVerifyVM) {
     ) throw ERROR_GUARDIAN_SET_EXPIRED;
     assert (vm.signaturesCount >= quorum(guardianSet.count)) throw ERROR_NO_QUORUM;
     val signaturesValid = verifyVmSignatures(vmHash, guardianSet, vm.signatures, vm.signaturesCount);
-    assert(signaturesValid) throw ERROR_INVALID_VM_SIGNATURES;
+    assert(signaturesValid) throw ERROR_INVALID_VAA_SIGNATURES;
 }
 
 // the main entrypoint: called when a contract receives 

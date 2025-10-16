@@ -61,8 +61,8 @@ vaa#_
     parts.push(part1);
     // split payload cell to tuple of slices
     parts = splitChainOfCellsToTuple(cs_copy.loadRef().beginParse(), parts);
-    // apply keccak256 to the tuple of slices
-    val vaaHash = keccak256_tuple(parts);
+    // apply keccak256 to the tuple of slices and then apply keccak256 to the result
+    val vaaHash = keccak256(beginCell().storeUint(keccak256_tuple(parts), 256));
     val vm = VM {
         version,
         guardianSetIndex,
@@ -79,53 +79,46 @@ vaa#_
     cs.assertEnd();
     return (vm, vaaHash);
 }
-/*
-int normalize_ecdsa_recovery_id(int v) inline {
-    ;; "compressed recovery_id for pub key"
-    if v >= 31 {
-        return v - 31;
-    }
 
-    ;; "uncompressed recovery_id for pub key"
-    if v >= 27 {
-        return v - 27;
-    }
-
-    return v;
-}
-*/
 @inline
-fun recoverAddress(x1: uint256, x2: uint256): uint256 {
-    var pubHash = keccak256(beginCell().storeUint(x1, 256).storeUint(x2, 256));
-    return pubHash & ((1 << 160) - 1);
+fun solEcrecover(vaaHash: uint256, v: uint8, r: uint256, s: uint256): uint160 {
+    val (_, x1: uint256, x2: uint256, valid: bool) = ecrecover(vaaHash, v, r, s);
+    assert (valid) throw ERROR_ECRECOVER_FAILED;
+    var publicKeyHash = keccak256(beginCell().storeUint(x1, 256).storeUint(x2, 256));
+    return publicKeyHash & ((1 << 160) - 1);
 }
 
 fun verifyVmSignatures(
-    vmHash: uint256,
+    vaaHash: uint256,
     guardianSet: GuardianSet,
     signatures: map<uint8, Signature>,
     signaturesCount: uint8,
 ): bool {
-    var lastIndex = 0;
+    var lastIndex = -1;
+    var realSigCount = 0;
+    // enumerate signatures in ascending order
     var value = signatures.findFirst();
     while (value.isFound) {
         val sigData = value.loadValue();
-        val i = value.getKey();
         var signature = sigData.signature as slice;
         val guardianIndex = sigData.guardianIndex;
-
-        val (v, r, s) = (signature.loadUint(8), signature.loadUint(256), signature.loadUint(256));
-        val (h: uint256, x1: uint256, x2: uint256, valid: bool) = ecrecover(vmHash, v, r, s);
-        assert (valid) throw ERROR_ECRECOVER_FAILED;
-        assert (
-            i == 0 || guardianIndex > lastIndex
-        ) throw ERROR_SGINATURE_INDICES_MUST_BE_ASCENDING;
+        // unpack signature components
+        val (r, s, v) = (
+            signature.loadUint(256), signature.loadUint(256), signature.loadUint(8));
+        // recover guardian key
+        val signatory = solEcrecover(vaaHash, v, r, s);
+        assert (guardianIndex > lastIndex) throw ERROR_SGINATURE_INDICES_MUST_BE_ASCENDING;
         lastIndex = guardianIndex;
         assert (guardianIndex < guardianSet.count) throw ERROR_GUARDIAN_INDEX_OUT_OF_BOUNDS;
-        val signatory = recoverAddress(x1, x2);
-        assert (signatory == guardianSet.keys.mustGet(guardianIndex)) throw ERROR_INVALID_SIGNATURE;
+        // get guardian key
+        val guardianKey = guardianSet.keys.mustGet(guardianIndex);
+        if (signatory != guardianKey) {
+            return false;
+        }
+        realSigCount += 1;
         value = signatures.iterateNext(value);
     }
+    assert (realSigCount == signaturesCount) throw ERROR_INVALID_SIGNATURES_COUNT;
     return true;
 }
 

@@ -10,19 +10,46 @@ import { splitBufferToCells } from '../wrappers/conversion';
 describe('Verify VAA signatures', () => {
     let blockchain: Blockchain;
     let wormhole: SandboxContract<Wormhole>;
+    const guardianSetIndex = 4;
+    const guardianSet = {
+        index: 4,
+        addresses: [
+          "0x5893B5A76c3f739645648885bDCcC06cd70a3Cd3",
+          "0xfF6CB952589BDE862c25Ef4392132fb9D4A42157",
+          "0x114De8460193bdf3A2fCf81f86a09765F4762fD1",
+          "0x107A0086b32d7A0977926A205131d8731D39cbEB",
+          "0x8C82B2fd82FaeD2711d59AF0F2499D16e726f6b2",
+          "0x11b39756C042441BE6D8650b69b54EbE715E2343",
+          "0x54Ce5B4D348fb74B958e8966e2ec3dBd4958a7cd",
+          "0x15e7cAF07C4e3DC8e7C469f92C8Cd88FB8005a20",
+          "0x74a3bf913953D695260D88BC1aA25A4eeE363ef0",
+          "0x000aC0076727b35FBea2dAc28fEE5cCB0fEA768e",
+          "0xAF45Ced136b9D9e24903464AE889F5C8a723FC14",
+          "0xf93124b7c738843CBB89E864c862c38cddCccF95",
+          "0xD2CC37A4dc036a8D232b48f62cDD4731412f4890",
+          "0xDA798F6896A3331F64b48c12D1D57Fd9cbe70811",
+          "0x71AA1BE1D36CaFE3867910F99C09e347899C19C3",
+          "0x8192b6E7387CCd768277c17DAb1b7a5027c0b3Cf",
+          "0x178e21ad2E77AE06711549CFBB1f9c7a9d8096e8",
+          "0x5E1487F35515d02A92753504a8D75471b9f49EdB",
+          "0x6FbEBc898F403E4773E95feB15E80C9A99c8348d"
+        ].map(address => Buffer.from(address.slice(2).padStart(64, '0'), 'hex')),
+  };
 
     beforeAll(async () => {
         const code = await compile('Wormhole');
         blockchain = await Blockchain.create();
         const deployer = await blockchain.treasury('deployer');
+        const guardianSets = createEmptyGuardianSet();
+        guardianSets.set(guardianSetIndex, { keys: guardianSet.addresses, expirationTime: GUARDIAN_SET_EXPIRY });
         wormhole = blockchain.openContract(
             Wormhole.createFromConfig(
                 {
                     id: Random.id(16),
                     messageFee: toNano(0.1),
                     sequences: createEmptySequences(),
-                    guardianSets: createEmptyGuardianSet(),
-                    guardianSetIndex: 4,
+                    guardianSets,
+                    guardianSetIndex,
                     guardianSetExpiry: GUARDIAN_SET_EXPIRY,
                     chainId: TON_CHAIN_ID,
                     governanceChainId: GOVERNANCE_CHAIN_ID,
@@ -36,10 +63,10 @@ describe('Verify VAA signatures', () => {
     });
 
     it.each([{
-        vaaBase64: "AQAAAAQNAMeiEnnJWMI8r1FnXiBk4pn8BI/rFORIP5I0Mzp0+yA1Jik+J8i6/VGI7XK7t9SGaYzHj6i6AFdKaASLOGQe4nkAAf9284NqC+TmcLWS64vD6iJMVzJBEuGQRdjNP7OzXkShEwDdlluQfYAA7+dTt9I/S7qO/iRjDU2JOHjOEG1BqKQBAg/GXIWUYM6EsI9nmCJ4BzlvHytjg8dk6tSs/qAa6JqCWihqxuh1D6UavMmLSZ7jqkudsXK2C46fJGwtmJVjCLgAA9EZBtkrlkXBdKHFgHMnUm4QK/16NkQsGP/C0bLSVe8dEw1RYTweX0dKA4i9VhYTFz2TtraMGvX8CfseUNl1jXwBBdSCk08HvePemRv+gTOudmqsHFW314qNSX1S92xCf6MRPcE2Oug4HgXySUBAuzYm/BfWbkf30WzAJpl5xVShdk0ABm0Tx2ZqfHrjVRwWW2XTvzmDf/5d/FCibzrxWgBXWnnSEuGFsM0lo2A6zMi7d8ywMu4WjQjo4Fi6F72ObU/OIdMBCt7nxjqiw0jOU2JdoSvlDhDgyJpIh/uXGigrKQ1ceuP2GWuHAyNYtQZsYMxNywnPF0Tj1lBCB16VxSwE6Q45BfkADM2HiTXB7eNEDG8D8rMqDV7wCWiS3Vstkb+9/vGG/bf5arNsuqQcXI4vnyPwrwxeb/h/h9hxBvR6vUICqaOaVU4ADU9F+uYiOQ3Gm7sh1MLBNrd/1bIqkkfwdDssTrxz1YY+Ak0YTkOG3qOThKpXdbkaMsgXXzIUp0E4jWBOS+AuQbwBDrrASflg3WvTi07cRKND7M7T+oy43qC4y7VBIX52ftX+DBYTVB50Pq4/eOX44SK0LgbVew0iiRL8/LtMOptv/+IAEIpN6jSG+PQrf9ORf8dJ/r6Wg8wxkUkxXFRYdBmj7nc3HNTb4JmWcceLzxZ0zLhUN2ScAhzu+R8I/21/cDBc3RsAEezNuPHURHFwbGmhJ74ReKywpJDv+C9+zAnEZ7O7Q2U0AfsOJplbk5FI8jUrRRaNisAad09Fx8XLGtlwUG3MMDQAEjYR5Kux4Hhys+ChdT/8tJCjuKGZCheCbdQLLpClHckEaVEvha40OCAJoLBRhJS4fksbbIt2cKD490zmY2y5lj4AaOvvP/laAQAAAgAAAAAAAAAAAAAAAD7hiyIUr/lwANl0z2R+fDR+j6WFAAAAAAAIvpsBAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOjUpRAAAAAAAAAAAAAAAAAAktbB4x4UUg5namh/CpN4i3Fr7/UAAtAr7HPm6vAEngt9NxE9qIEKzOnMjFw8RxC+j4FbQIJFAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+        vaaBase64: "AQAAAAQNAvy2yiwUFUsHZ50aYZjBE+AoeKw5ze8SP7oKC2KH/CbtClL79qBA9oRSi+tkFel7SC54dkzb9vVdgw1BYqlKUP8BA++IWbnB/ejTv3VWr9ZR3TC44B5l5ENWIsbGAlhUkRHuYUJvOaRkQPx+zPbbK8lODKfYHch1kb9ysOAEAy8O0mQABSwUz8geEN4Xcp+9wve/JXcKs4AU3v1PffBCsONUllhad4x40fwlnm5pTluxGrp8Lc7/+ixvwH+mkjb2PJd7ci4BBwCrPPBGG/ZnS7tyuuUYSY0mKWjn3IJ1qSQ3ge5UQddyKvqDbQ3zDUPoWPqV2UiOIkaoQwm5bdNCBLi9W3Msx38BCRfvNgW+Ct6CAKn+SomMQ395wjn15pSle8AM/7duad8CH8Q0Rfa4ohvUrd8kW4yBlDwOSTtcN5USxoaBtwFjiywBCj+qESYD/2UktwcLkX4YBBwGVjGC779fF5ohXy0hCGilP9ouSRWskSKPYiIOrzSZ8pju5BACDPHvY44zEc3hh+UAC5VGC2PUO7ubra5nCn+kupsDy4+LDyNeuBT9NaFAZfmVcJBU2p9nINTdLczOOQeaV48PndBs5Vn0In743PbQDVEBDO8uqYkcF7fLrH81XTRAuuHkg71jNQeHLqPDrpxQpyAWGpxZWv/Jk8P7Yqv1NiufZgDN8aq/qtO6iO77NWFLdkwADbySQlNaHm7WYaA7dv4DxuSPzntrgs1sQpzXJY+Dl2OeVYk2igRa7RnKNX/qcSIGUjHuXJ9kCjkXhG0Hv1cZb/YAD3JwzIRoX/Wj6NBj4HifhHt4V7A3JYF4oNGLgDJ7fl5ib8kmckGUZtomz8n9gBlw6Qz6WNOD5Vle3a5IlFQDGxoAEIhiTmK59VSjKBTSrZWMaYGcYzggpEaXsKEt849WyLucWmm/lcrq5nlD950EkGP+XIfvSHWWtMNA5KCBXjMaAPYBEaw8Sws0kBA0FBt1LmZ59W103EmJqC3g1sX/+oSpahNDWRGqF3JCZH7UVjAB86r1E1r2ZQMRli7SeceiiatwqkQAEs+0leN8bu5GKhJXeIUy0YSEEwEyTIgoWZywTZsB/mlQGw84E4yu3m6UbnQAzhGkAHG+eOepob+sGLsyBxKIxEMBaO/1OwAAAAAAAgAAAAAAAAAAAAAAAD7hiyIUr/lwANl0z2R+fDR+j6WFAAAAAAAIwvoBAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABrSdIAAAAAAAAAAAAAAAAAwCqqObIj/o0KDlxPJ+rZCDx1bMIAAsthe2OcU3vQiEb2G+RIHDT5OR8bj1PQgt4CTiMlCBE+AAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
     }])('verify VAA', async ({ vaaBase64 }) => {
-        const vaaBuf = parseVaa(Buffer.from(vaaBase64, "base64"));
-        const vmCell = VAAtoCell(vaaBuf, splitBufferToCells);
+        const parsedVaa = parseVaa(Buffer.from(vaaBase64, "base64"));
+        const vmCell = VAAtoCell(parsedVaa, splitBufferToCells);
         const verified = await wormhole.getVerifyVM(vmCell);
         expect(verified).toBe(true);
     });
