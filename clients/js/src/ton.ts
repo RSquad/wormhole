@@ -118,7 +118,7 @@ async function sendTonTransaction(
     contractAddress: string,
     method: string,
     vaaCell: Cell
-): Promise<string> {
+): Promise<void> {
     const networkConfig = NETWORKS[network]["Ton"];
     if (!networkConfig) {
         throw new Error(`No network config for TON on ${network}`);
@@ -146,7 +146,7 @@ async function sendTonTransaction(
     const contract = client.open(wallet);
 
     const messageBody = beginCell()
-        .storeUint(OP_RELAY_COMMENT, 32)  // opcode для RelayComment
+        .storeUint(OP_RELAY_COMMENT, 32)  // opcode for RelayComment
         .storeUint(Date.now(), 64)        // queryId
         .storeRef(vaaCell)                // encodedVaa
         .endCell();
@@ -154,6 +154,8 @@ async function sendTonTransaction(
     console.log(`Preparing RelayComment message to Integrator contract...`);
     console.log(`Contract address: ${contractAddress}`);
 
+    const stateBefore = await client.getContractState(contract.address).catch(() => undefined as any);
+    const prevLt: bigint = BigInt(stateBefore?.lastTransaction?.lt);
     const seqno = await contract.getSeqno();
     
     await contract.sendTransfer({
@@ -170,15 +172,10 @@ async function sendTonTransaction(
 
     console.log(`Transaction sent to ${contractAddress} via RelayComment`);
 
-    let currentSeqno = seqno;
-    while (currentSeqno === seqno) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        currentSeqno = await contract.getSeqno();
-    }
+    await waitForTx(client,contract.address,prevLt)
 
     console.log("Transaction confirmed");
-    console.log(`New seqno: ${seqno + 1}`);
-    return `seqno-${seqno + 1}`;
+    return 
 }
 
 // SendComment helper: sends a comment message to Integrator (publishes via Wormhole on TON)

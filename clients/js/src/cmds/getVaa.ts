@@ -29,7 +29,7 @@ export const builder = (y: typeof yargs) =>
     })
     .option("output", {
       describe: "What to print",
-      choices: ["all", "base64", "hex", "json"],
+      choices: ["all", "base64", "hex"],
       default: "all",
     });
 
@@ -57,10 +57,6 @@ export const handler = async (argv: Awaited<ReturnType<typeof builder>["argv"]>)
   }
   if (output === "hex" || output === "all") {
     console.log(`VAA (hex): ${hex}`);
-  }
-  if (output === "json") {
-    console.log(JSON.stringify(body, null, 2));
-    return;
   }
 
   try {

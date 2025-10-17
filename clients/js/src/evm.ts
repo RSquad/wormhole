@@ -328,13 +328,13 @@ export async function execute_evm(
 
   const key: string = n.key;
   // const contracts: Contracts = CONTRACTS[network][chain];
-  const {signer, overrides} = await getSigner(chain, key, rpc);
+  const { signer, overrides } = await getSigner(chain, key, rpc);
 
   switch (payload.module) {
     case "Core": {
       contract_address = contract_address
-          ? contract_address
-          : contracts.coreBridge.get(network, chain);
+        ? contract_address
+        : contracts.coreBridge.get(network, chain);
       if (contract_address === undefined) {
         throw Error(`Unknown core contract on ${network} for ${chain}`);
       }
@@ -344,19 +344,19 @@ export async function execute_evm(
         case "GuardianSetUpgrade":
           console.log("Submitting new guardian set");
           console.log(
-              "Hash: " + (await cb.submitNewGuardianSet(vaa, overrides)).hash
+            "Hash: " + (await cb.submitNewGuardianSet(vaa, overrides)).hash
           );
           break;
         case "ContractUpgrade":
           console.log("Upgrading core contract");
           console.log(
-              "Hash: " + (await cb.submitContractUpgrade(vaa, overrides)).hash
+            "Hash: " + (await cb.submitContractUpgrade(vaa, overrides)).hash
           );
           break;
         case "RecoverChainId":
           console.log("Recovering chain ID");
           console.log(
-              "Hash: " + (await cb.submitRecoverChainId(vaa, overrides)).hash
+            "Hash: " + (await cb.submitRecoverChainId(vaa, overrides)).hash
           );
           break;
         default:
@@ -367,8 +367,8 @@ export async function execute_evm(
     }
     case "NFTBridge": {
       contract_address = contract_address
-          ? contract_address
-          : contracts.nftBridge.get(network, chain);
+        ? contract_address
+        : contracts.nftBridge.get(network, chain);
       if (contract_address === undefined) {
         throw Error(`Unknown nft bridge contract on ${network} for ${chain}`);
       }
@@ -379,13 +379,13 @@ export async function execute_evm(
           console.log("Upgrading contract");
           console.log("Hash: " + (await nb.upgrade(vaa, overrides)).hash);
           console.log(
-              "Don't forget to verify the new implementation! See ethereum/VERIFY.md for instructions"
+            "Don't forget to verify the new implementation! See ethereum/VERIFY.md for instructions"
           );
           break;
         case "RecoverChainId":
           console.log("Recovering chain ID");
           console.log(
-              "Hash: " + (await nb.submitRecoverChainId(vaa, overrides)).hash
+            "Hash: " + (await nb.submitRecoverChainId(vaa, overrides)).hash
           );
           break;
         case "RegisterChain":
@@ -395,7 +395,7 @@ export async function execute_evm(
         case "Transfer":
           console.log("Completing transfer");
           console.log(
-              "Hash: " + (await nb.completeTransfer(vaa, overrides)).hash
+            "Hash: " + (await nb.completeTransfer(vaa, overrides)).hash
           );
           break;
         default:
@@ -406,8 +406,8 @@ export async function execute_evm(
     }
     case "TokenBridge": {
       contract_address = contract_address
-          ? contract_address
-          : contracts.tokenBridge.get(network, chain);
+        ? contract_address
+        : contracts.tokenBridge.get(network, chain);
       if (contract_address === undefined) {
         throw Error(`Unknown token bridge contract on ${network} for ${chain}`);
       }
@@ -418,13 +418,13 @@ export async function execute_evm(
           console.log("Upgrading contract");
           console.log("Hash: " + (await tb.upgrade(vaa, overrides)).hash);
           console.log(
-              "Don't forget to verify the new implementation! See ethereum/VERIFY.md for instructions"
+            "Don't forget to verify the new implementation! See ethereum/VERIFY.md for instructions"
           );
           break;
         case "RecoverChainId":
           console.log("Recovering chain ID");
           console.log(
-              "Hash: " + (await tb.submitRecoverChainId(vaa, overrides)).hash
+           "Hash: " + (await tb.submitRecoverChainId(vaa, overrides)).hash
           );
           break;
         case "RegisterChain":
@@ -434,7 +434,7 @@ export async function execute_evm(
         case "Transfer":
           console.log("Completing transfer");
           console.log(
-              "Hash: " + (await tb.completeTransfer(vaa, overrides)).hash
+            "Hash: " + (await tb.completeTransfer(vaa, overrides)).hash
           );
           break;
         case "AttestMeta":
@@ -444,7 +444,7 @@ export async function execute_evm(
         case "TransferWithPayload":
           console.log("Completing transfer with payload");
           console.log(
-              "Hash: " +
+            "Hash: " +
               (await tb.completeTransferWithPayload(vaa, overrides)).hash
           );
           break;
@@ -456,11 +456,11 @@ export async function execute_evm(
     }
     case "WormholeRelayer":
       contract_address = contract_address
-          ? contract_address
-          : contracts.relayer.get(network, chain);
+        ? contract_address
+        : contracts.relayer.get(network, chain);
       if (contract_address === undefined) {
         throw Error(
-            `Unknown Wormhole Relayer contract on ${network} for ${chain}`
+          `Unknown Wormhole Relayer contract on ${network} for ${chain}`
         );
       }
       let rb = WormholeRelayer__factory.connect(contract_address, signer);
@@ -468,23 +468,23 @@ export async function execute_evm(
         case "ContractUpgrade":
           console.log("Upgrading contract");
           console.log(
-              "Hash: " + (await rb.submitContractUpgrade(vaa, overrides)).hash
+            "Hash: " + (await rb.submitContractUpgrade(vaa, overrides)).hash
           );
           console.log(
-              "Don't forget to verify the new implementation! See ethereum/VERIFY.md for instructions"
+            "Don't forget to verify the new implementation! See ethereum/VERIFY.md for instructions"
           );
           break;
         case "RegisterChain":
           console.log("Registering chain");
           console.log(
-              "Hash: " +
+            "Hash: " +
               (await rb.registerWormholeRelayerContract(vaa, overrides)).hash
           );
           break;
         case "SetDefaultDeliveryProvider":
           console.log("Setting default relay provider");
           console.log(
-              "Hash: " +
+            "Hash: " +
               (await rb.setDefaultDeliveryProvider(vaa, overrides)).hash
           );
           break;
