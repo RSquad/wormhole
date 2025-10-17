@@ -799,8 +799,10 @@ const Devnet = {
     chain_id: undefined,
   },
   Ton: {
-    rpc: "https://testnet.toncenter.com/api/v2/jsonRPC?api_key=ec01c33940842fbf719fe2a2f6dc458c4f433e14e7d5f04dcb2b65a00b115dd2",
+    rpc: "https://testnet.toncenter.com/api/v2/jsonRPC",
     key: getEnvVar("TON_MNEMONIC"),
+    rpc_key: getEnvVar("TON_API_KEY"),
+    wallet_version: getEnvVar("TON_WALLET_VERSION")
   },
 };
 

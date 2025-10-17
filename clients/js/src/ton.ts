@@ -1,13 +1,20 @@
-import {Address, beginCell, Cell, TonClient, WalletContractV4, internal, Dictionary, address} from "@ton/ton";
-import { mnemonicToPrivateKey } from "@ton/crypto";
+import {
+    Address,
+    beginCell,
+    Cell,
+    TonClient,
+    internal,
+    Dictionary,
+    OpenedContract
+} from "@ton/ton"
 import { NETWORKS } from "./consts";
 import { Payload, VAA } from "./vaa";
 import {
-    Chain,
     Network,
     contracts,
 } from "@wormhole-foundation/sdk-base";
 import {stringToCell} from "@ton/core/dist/boc/utils/strings";
+import {initTonClientAndWallet} from "./tonWallet";
 
     function convertVAAToTonFormat(payload: Payload, parsedVaa: VAA<any>, recipientAddress?: Address): Cell {
         const signaturesDict = Dictionary.empty(
@@ -76,36 +83,27 @@ export async function execute_ton(
     payload: Payload,
     vaa: Buffer,
     network: Network,
-    contract: string | undefined,
+    contractAddress: string | undefined,
     rpc: string | undefined,
     parsedVaa?: VAA<any>
 ) {
-    const chain: Chain = "Ton";
-
     if (!parsedVaa) {
         throw new Error("Parsed VAA is required for TON");
     }
 
-    const networkConfig = NETWORKS[network]["Ton"];
-    if (!networkConfig?.key) {
-        throw new Error("No mnemonic/key for TON");
-    }
+    const {client,contract:contractWallet,keyPair} =  await initTonClientAndWallet(NETWORKS[network])
 
-
-    const keyPair = await mnemonicToPrivateKey(networkConfig.key.split(" "));
-    const wallet = WalletContractV4.create({
-        workchain: 0,
-        publicKey: keyPair.publicKey,
-    });
-
-    const vaaCell = convertVAAToTonFormat(payload, parsedVaa, wallet.address);
+    const vaaCell = await convertVAAToTonFormat(payload, parsedVaa, contractWallet.contract.address);
 
     await sendTonTransaction(
         network,
         rpc,
-        contract,
+        contractAddress,
         "submit_vaa",
-        vaaCell
+        vaaCell,
+        client,
+        contractWallet,
+        keyPair
     );
 }
 
@@ -117,34 +115,11 @@ async function sendTonTransaction(
     rpc: string | undefined,
     contractAddress: string,
     method: string,
-    vaaCell: Cell
+    vaaCell: Cell,
+    client: TonClient,
+    contract: OpenedContract<T>,
+    keyPair: { publicKey: Buffer; secretKey: Buffer }
 ): Promise<void> {
-    const networkConfig = NETWORKS[network]["Ton"];
-    if (!networkConfig) {
-        throw new Error(`No network config for TON on ${network}`);
-    }
-
-    const mnemonic = networkConfig.key;
-    if (!mnemonic) {
-        throw new Error("No mnemonic/key for TON");
-    }
-
-    const rpcUrl = rpc ?? networkConfig.rpc;
-    if (!rpcUrl) {
-        throw new Error("No RPC URL for TON");
-    }
-
-    const client = new TonClient({ endpoint: rpcUrl });
-
-    const keyPair = await mnemonicToPrivateKey(mnemonic.split(" "));
-
-    const wallet = WalletContractV4.create({
-        workchain: 0,
-        publicKey: keyPair.publicKey,
-    });
-
-    const contract = client.open(wallet);
-
     const messageBody = beginCell()
         .storeUint(OP_RELAY_COMMENT, 32)  // opcode for RelayComment
         .storeUint(Date.now(), 64)        // queryId
@@ -154,11 +129,9 @@ async function sendTonTransaction(
     console.log(`Preparing RelayComment message to Integrator contract...`);
     console.log(`Contract address: ${contractAddress}`);
 
-    const stateBefore = await client.getContractState(contract.address).catch(() => undefined as any);
-    const prevLt: bigint = BigInt(stateBefore?.lastTransaction?.lt);
-    const seqno = await contract.getSeqno();
-    
-    await contract.sendTransfer({
+    const { lt: prevLt, seqno } = await getContractStateInfo(client, contract);
+
+    await contract.contract.sendTransfer({
         seqno,
         secretKey: keyPair.secretKey,
         messages: [
@@ -172,13 +145,12 @@ async function sendTonTransaction(
 
     console.log(`Transaction sent to ${contractAddress} via RelayComment`);
 
-    await waitForTx(client,contract.address,prevLt)
+    await waitForTx(client,contract.contract.address,prevLt)
 
     console.log("Transaction confirmed");
     return 
 }
 
-// SendComment helper: sends a comment message to Integrator (publishes via Wormhole on TON)
 export async function sendTonComment(
     network: Network,
     rpc: string | undefined,
@@ -188,15 +160,7 @@ export async function sendTonComment(
     chainId: number = 62,
     consistencyLevel: number = 15,
 ): Promise<void> {
-    const networkConfig = NETWORKS[network]["Ton"];
-    if (!networkConfig?.key) throw new Error("No mnemonic/key for TON");
-
-    const client = new TonClient({ endpoint: rpc ?? networkConfig.rpc! });
-    if (!client) throw new Error("No RPC URL for TON");
-
-    const keyPair = await mnemonicToPrivateKey(networkConfig.key.split(" "));
-    const wallet = WalletContractV4.create({ workchain: 0, publicKey: keyPair.publicKey });
-    const contract = client.open(wallet);
+    const {client,contract,keyPair} =  await initTonClientAndWallet(NETWORKS[network])
 
     const toBuffer = (() => {
         if (!toHex) return Buffer.alloc(32); // default zero address if not provided
@@ -206,7 +170,6 @@ export async function sendTonComment(
             // Extract the 256-bit hash from TON address
             return tonAddr.hash;
         } catch (e) {
-            // Not a TON address, try as hex string
             const cleaned = toHex.startsWith("0x") ? toHex.slice(2) : toHex;
             const buf = Buffer.from(cleaned.padStart(64, "0"), "hex");
             if (buf.length !== 32) {
@@ -227,12 +190,9 @@ export async function sendTonComment(
         .storeStringRefTail(commentText)
         .endCell();
 
-    const stateBefore = await client.getContractState(contract.address).catch(() => undefined as any);
-    const prevLt: bigint = BigInt(stateBefore?.lastTransaction?.lt);
+    const { lt: prevLt, seqno } = await getContractStateInfo(client, contract);
 
-    const seqno = await contract.getSeqno();
-
-    await contract.sendTransfer({
+    await contract.contract.sendTransfer({
         seqno,
         secretKey: keyPair.secretKey,
         messages: [
@@ -244,14 +204,14 @@ export async function sendTonComment(
         ],
     });
 
-    await waitForTx(client,contract.address,prevLt)
+    await waitForTx(client,contract.contract.address,prevLt)
 
     console.log(`Message sent to Integrator ${integratorAddress}`);
     console.log(`QueryId: ${queryId}`);
     console.log("Transaction confirmed");
 }
 
-async function waitForTx(client: TonClient, addr: Address,  prevLt?: bigint, timeoutMs = 50000) {
+async function waitForTx(client: TonClient, addr: Address,  prevLt?: bigint, timeoutMs = 80000) {
     const start = Date.now();
 
     for (; ;) {
@@ -300,4 +260,20 @@ export async function queryRegistrationsTon(
     console.log(`Querying registrations for ${module} at ${contractAddress}`);
     
     return results;
+}
+
+export async function getContractStateInfo(
+    client: TonClient,
+    contract: OpenedContract<T>
+): Promise<{ lt: bigint; seqno: number }> {
+    try {
+        const stateBefore = await client.getContractState(contract.contract.address).catch(() => undefined as any);
+        const ltRaw = stateBefore?.lastTransaction?.lt;
+        const lt = BigInt(ltRaw);
+        const seqno = await contract.contract.getSeqno();
+
+        return { lt, seqno };
+    } catch (err) {
+        throw new Error("error when try to get contract state info")
+    }
 }
