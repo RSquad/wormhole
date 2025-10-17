@@ -2,7 +2,11 @@ import * as tinysecp from 'tiny-secp256k1';
 import { ECPairFactory, ECPairInterface } from 'ecpair';
 import { randomBytes } from 'crypto';
 import { Slice, Transaction } from '@ton/ton';
+import { sha256_sync } from '@ton/crypto';
 import { findTransactionRequired, FlatTransactionComparable } from '@ton/test-utils';
+import { GuardianSignature, ParsedVaa } from '../wrappers/Structs';
+import { TON_CHAIN_ID } from '../wrappers/Constants';
+import assert from 'assert';
 
 export type KeyPair = {
     privateKey: Buffer;
@@ -29,9 +33,9 @@ export class Random {
 }
 
 export class Crypto {
-    static makeRandomKeyPair = () => {
+    static makeRandomKeyPair = (compressed: boolean = true) => {
         const privateKey = randomBytes(32);
-        const keyPair = ECPair.fromPrivateKey(privateKey);
+        const keyPair = ECPair.fromPrivateKey(privateKey, { compressed });
         return {
             privateKey,
             keyPair,
@@ -61,3 +65,36 @@ export class Event {
         return eventBody;
     };
 }
+
+export const randomSignature = (index: number): GuardianSignature => {
+    const key = Crypto.makeRandomKeyPair();
+    const hash = sha256_sync(Buffer.from('test'));
+    const sigData = tinysecp.signRecoverable(hash, key.privateKey);
+    tinysecp.pointAdd
+    const signature = Buffer.concat([Buffer.from(sigData.signature), Buffer.from([sigData.recoveryId])]);
+    assert.equal(signature.length, 65, 'Signature must be 65 bytes');
+    return { signature, index };
+};
+
+export const generateVAA = (
+    guardianSetIndex: number,
+    signaturesCount: number,
+    payload: Buffer,
+    signatures?: GuardianSignature[],
+): ParsedVaa => {
+    const guardianSignatures = signatures || Array.from({ length: signaturesCount }, (_, i) => randomSignature(i));
+    const vaa: ParsedVaa = {
+        version: 1,
+        guardianSetIndex,
+        guardianSignatures,
+        timestamp: Math.floor(Date.now() / 1000),
+        nonce: 123,
+        emitterChain: TON_CHAIN_ID,
+        emitterAddress: Buffer.alloc(32, 0),
+        sequence: 1n,
+        consistencyLevel: 1,
+        payload: payload,
+        hash: Buffer.alloc(32, 0),
+    };
+    return vaa;
+};

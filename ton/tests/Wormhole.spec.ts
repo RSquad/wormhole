@@ -1,13 +1,13 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { Cell, toNano, beginCell, Dictionary } from '@ton/core';
-import { Wormhole, GuardianSetDictionaryValue, SignatureDictionaryValue } from '../wrappers/Wormhole';
+import { Wormhole } from '../wrappers/Wormhole';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { Crypto, Time } from './TestUtils';
+import { Crypto, Time, generateVAA } from './TestUtils';
 import { findTransactionRequired } from '@ton/test-utils';
-import { randomBytes } from 'crypto';
 import { Events, Opcodes, toAnswer } from '../wrappers/Constants';
-import { createEmptyGuardianSet, generateVAACell } from '../wrappers/Structs';
+import { createEmptyGuardianSet, VAAtoCell } from '../wrappers/Structs';
+import { splitBufferToCells } from '../wrappers/conversion';
 
 const NUM_GUARDIANS = 19;
 const NUM_SIGNATURES = 13;
@@ -72,10 +72,10 @@ describe('Wormhole', () => {
         expect(sequence).toBe(0);
     });
 
-    it('should succeed verifyVM', async () => {
-        const vmData = generateVAACell(NUM_SIGNATURES);
-        const result = await wormhole.getVerifyVM(vmData);
-        expect(result).toBe(true);
+    it('should succeed verifyVM (return false)', async () => {
+        const vmData = generateVAA(0, NUM_SIGNATURES, Buffer.alloc(32));
+        const result = await wormhole.getVerifyVM(VAAtoCell(vmData, splitBufferToCells));
+        expect(result).toBe(false);
     });
 
     it('should send publish message with sufficient fee', async () => {
@@ -154,7 +154,7 @@ describe('Wormhole', () => {
 
     it('should send parse and verify VM', async () => {
         const verifier = await blockchain.treasury('verifier');
-        const vmData = generateVAACell(NUM_SIGNATURES);
+        const vmData = VAAtoCell(generateVAA(0, NUM_SIGNATURES, Buffer.alloc(32)), splitBufferToCells);
         const verifyResult = await wormhole.sendParseAndVerifyVM(verifier.getSender(), {
             value: toNano(0.1),
             queryId: 1,

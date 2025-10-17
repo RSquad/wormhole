@@ -72,21 +72,29 @@ fun quorum(numGuardians: uint8): uint8 {
     return ((numGuardians * 2) / 3) + 1;
 }
 
-@inline
-fun onParseAndVerifyVM(params: ParseAndVerifyVM) {
-    var storage = lazy Storage.load();
-    val (vm, vmHash) = VM.parse(params.encodedVM);
-    assert(vm.version == VERSION) throw ERROR_INVALID_VM_VERSION;
-    val value = storage.guardianSets.get(vm.guardianSetIndex);
+@inline_ref
+fun verifyVaa(storage: Storage, vaa: VM, vaaHash: uint256): bool {
+    val value = storage.guardianSets.get(vaa.guardianSetIndex);
     assert(value.isFound) throw ERROR_INVALID_GUARDIAN_SET;
+
     val guardianSet = value.loadValue();
     assert (
-        vm.guardianSetIndex == storage.guardianSetIndex || 
+        vaa.guardianSetIndex == storage.guardianSetIndex || 
         guardianSet.expirationTime >= blockchain.now()
     ) throw ERROR_GUARDIAN_SET_EXPIRED;
-    assert (vm.signaturesCount >= quorum(guardianSet.count)) throw ERROR_NO_QUORUM;
-    val signaturesValid = verifyVmSignatures(vmHash, guardianSet, vm.signatures, vm.signaturesCount);
-    assert(signaturesValid) throw ERROR_INVALID_VAA_SIGNATURES;
+
+    assert (vaa.signaturesCount >= quorum(guardianSet.count)) throw ERROR_NO_QUORUM;
+
+    return verifyVmSignatures(vaaHash, guardianSet, vaa.signatures, vaa.signaturesCount);
+}
+
+@inline
+fun onParseAndVerifyVM(params: ParseAndVerifyVM) {
+    val (vm, vmHash) = VM.parse(params.encodedVM);
+    assert(vm.version == VERSION) throw ERROR_INVALID_VM_VERSION;
+    var storage = lazy Storage.load();
+    val valid= verifyVaa(storage, vm, vmHash);
+    assert(valid) throw ERROR_INVALID_VAA_SIGNATURES;
 }
 
 // the main entrypoint: called when a contract receives 
@@ -122,7 +130,15 @@ fun onBouncedMessage(in: InMessageBounced) {
 get fun verifyVM(vmCell: cell): bool {
     val storage = lazy Storage.load();
     val (vm, vmHash) = VM.parse(vmCell);
-    val signaturesValid = verifyVmSignatures(vmHash, storage.guardianSets.mustGet(vm.guardianSetIndex), vm.signatures, vm.signaturesCount);
+    val value = storage.guardianSets.get(vm.guardianSetIndex);
+    assert(value.isFound) throw ERROR_INVALID_GUARDIAN_SET;
+    val guardianSet = value.loadValue();
+    val signaturesValid = verifyVmSignatures(
+        vmHash,
+        guardianSet,
+        vm.signatures, 
+        vm.signaturesCount
+    );
     return signaturesValid;
 }
 
@@ -144,4 +160,10 @@ get fun getSequence(sender: address): int {
     } else {
         return 0;
     }
+}
+
+get fun getQuorum(): uint8 {
+    val storage = lazy Storage.load();
+    val guardianSet = storage.guardianSets.mustGet(storage.guardianSetIndex);
+    return quorum(guardianSet.count);
 }

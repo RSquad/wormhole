@@ -1,13 +1,17 @@
-import { Address, beginCell, Cell, Dictionary } from '@ton/core';
-import { GuardianSet, GuardianSetDictionaryValue, Signature, SignatureDictionaryValue } from './Wormhole';
+import { Address, beginCell, Builder, Cell, Dictionary, Slice } from '@ton/core';
+import { SignatureDictionaryValue } from './Wormhole';
 import { randomBytes } from 'crypto';
 import { TON_CHAIN_ID } from './Constants';
 
-export interface GuardianSignature {
+export type GuardianSet = {
+    keys: Buffer[];
+    expirationTime: number;
+};
+
+export type GuardianSignature = {
     index: number;
     signature: Buffer;
-}
-
+};
 export interface ParsedVaa {
     version: number;
     guardianSetIndex: number;
@@ -36,34 +40,8 @@ export const createEmptySequences = (): Dictionary<Address, number> => {
     return Dictionary.empty(Dictionary.Keys.Address(), Dictionary.Values.Uint(64));
 };
 
-export const createEmptySignatures = (): Dictionary<number, Signature> => {
+export const createEmptySignatures = (): Dictionary<number, GuardianSignature> => {
     return Dictionary.empty(Dictionary.Keys.Uint(8), SignatureDictionaryValue);
-};
-
-export const randomSignature = (index: number): Signature => {
-    return { signature: randomBytes(65), guardianIndex: index };
-};
-
-export const generateVAACell = (signaturesCount: number, payload?: Cell) => {
-    // Create a test VM that follows the contract's parsing order
-    const signaturesDict = createEmptySignatures();
-    for (let i = 0; i < signaturesCount; i++) {
-        signaturesDict.set(i, randomSignature(i));
-    }
-    const vmData = beginCell()
-        .storeUint(1, 8) // version
-        .storeUint(0, 32) // guardianSetIndex
-        .storeUint(signaturesDict.size, 8) // signaturesCount
-        .storeDict(signaturesDict)
-        .storeUint(Math.floor(Date.now() / 1000), 32) // timestamp
-        .storeUint(123, 32) // nonce
-        .storeUint(TON_CHAIN_ID, 16) // emitterChainId
-        .storeUint(0, 256) // emitterAddress
-        .storeUint(1, 64) // sequence
-        .storeUint(1, 8) // consistencyLevel
-        .storeRef(payload || beginCell().storeStringTail('test payload').endCell()) // payload
-        .endCell();
-    return vmData;
 };
 
 export const VAAtoCell = (vaa: ParsedVaa, payloadToCell: (payload: Buffer) => Cell): Cell => {
@@ -71,7 +49,7 @@ export const VAAtoCell = (vaa: ParsedVaa, payloadToCell: (payload: Buffer) => Ce
     for (let i = 0; i < vaa.guardianSignatures.length; i++) {
         signatures.set(i, {
             signature: vaa.guardianSignatures[i].signature,
-            guardianIndex: vaa.guardianSignatures[i].index,
+            index: vaa.guardianSignatures[i].index,
         });
     }
     const vaaCell = beginCell()
@@ -119,7 +97,29 @@ export function parseVaa(vaa: Buffer): ParsedVaa {
         payload: body.subarray(51),
         hash: Buffer.alloc(32),
     };
-}
+};
+
+export const GuardianSetDictionaryValue = {
+    serialize: (src: GuardianSet, builder: Builder) => {
+        const keysDict = Dictionary.empty(Dictionary.Keys.Uint(8), Dictionary.Values.Buffer(32));
+        src.keys.forEach((key, index) => {
+            keysDict.set(index, key);
+        });
+        builder.storeDict(keysDict).storeUint(src.keys.length, 8).storeUint(src.expirationTime, 32);
+    },
+    parse: (src: Slice): GuardianSet => {
+        const keysDict = src.loadDict(Dictionary.Keys.Uint(8), Dictionary.Values.Buffer(32));
+        const keys = keysDict.keys().map((key) => {
+            return keysDict.get(key)!;
+        });
+        const count = src.loadUint(8);
+        if (count !== keys.length) {
+            throw new Error('Invalid guardian set count: parsed ' + keys.length + ' keys, got ' + count);
+        }
+        const expirationTime = src.loadUint(32);
+        return { keys, expirationTime };
+    },
+};
 
 export const decodeCommentPayload = (payload: Cell): CommentPayload => {
     const slice = payload.beginParse();

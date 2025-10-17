@@ -5,8 +5,9 @@ import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import { Wormhole } from '../wrappers/Wormhole';
 import { Crypto, Random, Time, Event } from './TestUtils';
-import { createEmptyGuardianSet, decodeCommentPayload, generateVAACell } from '../wrappers/Structs';
+import { createEmptyGuardianSet, decodeCommentPayload, VAAtoCell } from '../wrappers/Structs';
 import { Events, Opcodes, toAnswer, TON_CHAIN_ID } from '../wrappers/Constants';
+import { splitBufferToCells } from '../wrappers/conversion';
 
 const NUM_GUARDIANS = 19;
 
@@ -140,7 +141,7 @@ describe('Integrator', () => {
 
         const result = await integrator.sendRelayComment(user.getSender(), toNano(0.15), {
             queryId: 0xdeadbeef,
-            encodedVaa: generateVAACell(19, commentPayloadCell),
+            encodedVaa: VAAtoCell(generateVAA(guardianSetIndex, 19, Buffer.from("test payload")), splitBufferToCells),
         });
         expect(result.transactions).toHaveTransaction({
             from: user.address,
