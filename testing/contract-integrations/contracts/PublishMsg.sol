@@ -27,5 +27,5 @@ contract PublishMsg {
             value : msg.value
         }(0, bytes("hello"), consistencyLevel);
     }
-    
+
 }

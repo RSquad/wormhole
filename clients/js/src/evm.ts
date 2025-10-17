@@ -9,7 +9,7 @@ import axios from "axios";
 import { ethers } from "ethers";
 import { solidityKeccak256 } from "ethers/lib/utils";
 import { NETWORKS } from "./consts";
-import {Encoding, Payload, encode, impossible, typeWidth, VAA} from "./vaa";
+import { Encoding, Payload, encode, impossible, typeWidth } from "./vaa";
 import {
   approveEth,
   getAllowanceEth,
@@ -424,7 +424,7 @@ export async function execute_evm(
         case "RecoverChainId":
           console.log("Recovering chain ID");
           console.log(
-           "Hash: " + (await tb.submitRecoverChainId(vaa, overrides)).hash
+            "Hash: " + (await tb.submitRecoverChainId(vaa, overrides)).hash
           );
           break;
         case "RegisterChain":

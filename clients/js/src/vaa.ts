@@ -115,16 +115,14 @@ export function parse(buffer: Buffer): VAA<Payload | Other> {
     .or(portalContractRecoverChainId("TokenBridge"))
     .or(portalContractRecoverChainId("NFTBridge"))
     .or(wormholeRelayerSetDefaultDeliveryProvider())
-      .or (commentParser())
+    .or (commentParser());
   let payload: Payload | Other | null = parser.parse(vaa.payload);
   if (payload === null) {
-    var hex = Buffer.from(vaa.payload).toString("hex")
-    var ascii = Buffer.from(vaa.payload).toString("utf8");
-      payload = {
-        type: "Other",
-        hex,
-        ascii,
-      };
+    payload = {
+      type: "Other",
+      hex: Buffer.from(vaa.payload).toString("hex"),
+      ascii: Buffer.from(vaa.payload).toString("utf8"),
+    };
   } else {
     delete (payload as any)["tokenURILength"];
   }
@@ -215,9 +213,7 @@ export function vaaDigest(vaa: VAA<Payload | Other>) {
 
 function vaaBody(vaa: VAA<Payload | Other>) {
   let payload_str: string;
-  if (vaa.payload.type === "Other") {
-    payload_str = vaa.payload.hex;
-  } else if (vaa.payload.type === "Comment") {
+  if (vaa.payload.type === "Other"||vaa.payload.type === "Comment") {
     payload_str = vaa.payload.hex;
   } else {
     let payload = vaa.payload;
