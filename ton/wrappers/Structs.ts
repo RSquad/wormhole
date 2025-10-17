@@ -1,7 +1,6 @@
 import { Address, beginCell, Builder, Cell, Dictionary, Slice } from '@ton/core';
 import { SignatureDictionaryValue } from './Wormhole';
-import { randomBytes } from 'crypto';
-import { TON_CHAIN_ID } from './Constants';
+import { encodePacked, keccak256 } from 'web3-utils';
 
 export type GuardianSet = {
     keys: Buffer[];
@@ -97,7 +96,21 @@ export function parseVaa(vaa: Buffer): ParsedVaa {
         payload: body.subarray(51),
         hash: Buffer.alloc(32),
     };
-};
+}
+
+export function calcVaaHash(vaa: ParsedVaa): Buffer {
+    const body = encodePacked(
+        { type: 'uint32', value: vaa.timestamp },
+        { type: 'uint32', value: vaa.nonce },
+        { type: 'uint16', value: vaa.emitterChain },
+        { type: 'bytes32', value: '0x' + vaa.emitterAddress.toString('hex') },
+        { type: 'uint64', value: vaa.sequence },
+        { type: 'uint8', value: vaa.consistencyLevel },
+        { type: 'bytes', value: '0x' + vaa.payload.toString('hex') },
+    );
+
+    return Buffer.from(keccak256(keccak256(body)).slice(2), 'hex');
+}
 
 export const GuardianSetDictionaryValue = {
     serialize: (src: GuardianSet, builder: Builder) => {

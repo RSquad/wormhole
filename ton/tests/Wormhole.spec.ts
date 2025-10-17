@@ -3,11 +3,12 @@ import { Cell, toNano, beginCell, Dictionary } from '@ton/core';
 import { Wormhole } from '../wrappers/Wormhole';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { Crypto, Time, generateVAA } from './TestUtils';
+import { Crypto, Time, calcEvmAddress, generateVAA } from './TestUtils';
 import { findTransactionRequired } from '@ton/test-utils';
 import { Events, Opcodes, toAnswer } from '../wrappers/Constants';
-import { createEmptyGuardianSet, VAAtoCell } from '../wrappers/Structs';
+import { calcVaaHash, createEmptyGuardianSet, VAAtoCell } from '../wrappers/Structs';
 import { splitBufferToCells } from '../wrappers/conversion';
+import * as tinysecp from 'tiny-secp256k1';
 
 const NUM_GUARDIANS = 19;
 const NUM_SIGNATURES = 13;
@@ -24,17 +25,17 @@ describe('Wormhole', () => {
     let publisher: SandboxContract<TreasuryContract>;
     let wormhole: SandboxContract<Wormhole>;
 
-    const keys = new Array(NUM_GUARDIANS).fill(0).map(() => Crypto.makeRandomKeyPair());
+    const keys = new Array(NUM_GUARDIANS).fill(0).map(() => Crypto.makeRandomKeyPair(false));
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
         deployer = await blockchain.treasury('deployer');
         publisher = await blockchain.treasury('publisher');
 
-        const publicKeys = keys.map((key) => Crypto.toXOnly(key.keyPair.publicKey as Buffer));
+        const guardianAddresses = keys.map((key) => Buffer.from(calcEvmAddress(key.keyPair.publicKey)));
 
         const guardianSets = createEmptyGuardianSet();
-        guardianSets.set(0, { keys: publicKeys, expirationTime: Time.now(60) });
+        guardianSets.set(0, { keys: guardianAddresses, expirationTime: Time.now(60) });
         wormhole = blockchain.openContract(
             Wormhole.createFromConfig(
                 {
@@ -73,8 +74,8 @@ describe('Wormhole', () => {
     });
 
     it('should succeed verifyVM (return false)', async () => {
-        const vmData = generateVAA(0, NUM_SIGNATURES, Buffer.alloc(32));
-        const result = await wormhole.getVerifyVM(VAAtoCell(vmData, splitBufferToCells));
+        const vaa = generateVAA(0, NUM_SIGNATURES, Buffer.alloc(32));
+        const result = await wormhole.getVerifyVM(VAAtoCell(vaa, splitBufferToCells));
         expect(result).toBe(false);
     });
 
@@ -153,12 +154,24 @@ describe('Wormhole', () => {
     });
 
     it('should send parse and verify VM', async () => {
+        const payload = Buffer.from('test payload');
         const verifier = await blockchain.treasury('verifier');
-        const vmData = VAAtoCell(generateVAA(0, NUM_SIGNATURES, Buffer.alloc(32)), splitBufferToCells);
+        let vaa = generateVAA(0, NUM_SIGNATURES, payload);
+        const vaaHash = calcVaaHash(vaa);
+        const signatures = [];
+        for (let i = 0; i < NUM_SIGNATURES; i++) {
+            const sigData = tinysecp.signRecoverable(vaaHash, keys[i].privateKey);
+            signatures.push({
+                signature: Buffer.concat([Buffer.from(sigData.signature), Buffer.from([sigData.recoveryId])]),
+                index: i,
+            });
+        }
+        vaa = generateVAA(0, NUM_SIGNATURES, payload, signatures);
+        const vaaCell = VAAtoCell(vaa, splitBufferToCells);
         const verifyResult = await wormhole.sendParseAndVerifyVM(verifier.getSender(), {
             value: toNano(0.1),
             queryId: 1,
-            encodedVM: vmData,
+            encodedVM: vaaCell,
             tail: beginCell().endCell(),
         });
         expect(verifyResult.transactions).toHaveTransaction({

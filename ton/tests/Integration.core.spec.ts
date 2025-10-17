@@ -4,10 +4,11 @@ import { Integrator } from '../wrappers/Integrator';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import { Wormhole } from '../wrappers/Wormhole';
-import { Crypto, Random, Time, Event } from './TestUtils';
-import { createEmptyGuardianSet, decodeCommentPayload, VAAtoCell } from '../wrappers/Structs';
+import { Crypto, Random, Time, Event, generateVAA } from './TestUtils';
+import { calcVaaHash, createEmptyGuardianSet, decodeCommentPayload, VAAtoCell } from '../wrappers/Structs';
 import { Events, Opcodes, toAnswer, TON_CHAIN_ID } from '../wrappers/Constants';
-import { splitBufferToCells } from '../wrappers/conversion';
+import { writeCellsToBuffer } from '../wrappers/conversion';
+import * as tinysecp from 'tiny-secp256k1';
 
 const NUM_GUARDIANS = 19;
 
@@ -21,7 +22,7 @@ describe('Integrator', () => {
     let recipient: SandboxContract<TreasuryContract>;
     let integrator: SandboxContract<Integrator>;
     let wormhole: SandboxContract<Wormhole>;
-    const keys = Crypto.makeRandomKeyPairs(NUM_GUARDIANS);
+    const keys = Crypto.makeRandomKeyPairs(NUM_GUARDIANS, false);
     const guardianSetIndex = 0;
     const comment = 'test comment';
     let commentPayloadCell: Cell | undefined = undefined;
@@ -37,9 +38,9 @@ describe('Integrator', () => {
         user = await blockchain.treasury('user');
         recipient = await blockchain.treasury('recipient');
 
-        const publicKeys = Crypto.mapKeyPairsToXOnlyPublicKeys(keys);
+        const guardianAddresses = Crypto.mapKeyPairsToEvmAddresses(keys);
         const guardianSets = createEmptyGuardianSet();
-        guardianSets.set(guardianSetIndex, { keys: publicKeys, expirationTime: Time.now(60) });
+        guardianSets.set(guardianSetIndex, { keys: guardianAddresses, expirationTime: Time.now(60) });
         wormhole = blockchain.openContract(
             Wormhole.createFromConfig(
                 {
@@ -138,10 +139,28 @@ describe('Integrator', () => {
 
     it('should relay comment', async () => {
         expect(commentPayloadCell).toBeDefined();
+        const payload = writeCellsToBuffer(commentPayloadCell!);
+        let vaa = generateVAA(guardianSetIndex, 13, payload);
+        const vaaHash = calcVaaHash(vaa);
+        const signatures = [];
+        for (let i = 0; i < 13; i++) {
+            const sigData = tinysecp.signRecoverable(vaaHash, keys[i].privateKey);
+            signatures.push({
+                signature: Buffer.concat([Buffer.from(sigData.signature), Buffer.from([sigData.recoveryId])]),
+                index: i,
+            });
+        }
+        vaa = generateVAA(guardianSetIndex, 13, payload, signatures);
 
         const result = await integrator.sendRelayComment(user.getSender(), toNano(0.15), {
             queryId: 0xdeadbeef,
-            encodedVaa: VAAtoCell(generateVAA(guardianSetIndex, 19, Buffer.from("test payload")), splitBufferToCells),
+            encodedVaa: VAAtoCell(vaa, (payload: Buffer) => {
+                return beginCell()
+                    .storeUint(payload.readUInt16BE(0), 16)
+                    .storeBuffer(payload.subarray(2, 34), 32)
+                    .storeStringRefTail(payload.subarray(34).toString('utf8'))
+                    .endCell();
+            }),
         });
         expect(result.transactions).toHaveTransaction({
             from: user.address,

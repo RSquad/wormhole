@@ -7,6 +7,7 @@ import { findTransactionRequired, FlatTransactionComparable } from '@ton/test-ut
 import { GuardianSignature, ParsedVaa } from '../wrappers/Structs';
 import { TON_CHAIN_ID } from '../wrappers/Constants';
 import assert from 'assert';
+import { keccak256 } from 'web3-utils';
 
 export type KeyPair = {
     privateKey: Buffer;
@@ -46,8 +47,12 @@ export class Crypto {
         return publicKey.length === 33 ? publicKey.subarray(1) : publicKey;
     };
 
-    static makeRandomKeyPairs = (count: number): KeyPair[] => {
-        return Array.from({ length: count }, () => Crypto.makeRandomKeyPair());
+    static makeRandomKeyPairs = (count: number, compressed: boolean = true): KeyPair[] => {
+        return Array.from({ length: count }, () => Crypto.makeRandomKeyPair(compressed));
+    };
+
+    static mapKeyPairsToEvmAddresses = (keyPairs: KeyPair[]): Buffer[] => {
+        return keyPairs.map((k) => Buffer.from(calcEvmAddress(k.keyPair.publicKey)));
     };
 
     static mapKeyPairsToXOnlyPublicKeys = (keyPairs: KeyPair[]): Buffer[] => {
@@ -70,7 +75,7 @@ export const randomSignature = (index: number): GuardianSignature => {
     const key = Crypto.makeRandomKeyPair();
     const hash = sha256_sync(Buffer.from('test'));
     const sigData = tinysecp.signRecoverable(hash, key.privateKey);
-    tinysecp.pointAdd
+    tinysecp.pointAdd;
     const signature = Buffer.concat([Buffer.from(sigData.signature), Buffer.from([sigData.recoveryId])]);
     assert.equal(signature.length, 65, 'Signature must be 65 bytes');
     return { signature, index };
@@ -97,4 +102,10 @@ export const generateVAA = (
         hash: Buffer.alloc(32, 0),
     };
     return vaa;
+};
+
+export const calcEvmAddress = (publicKey: Uint8Array): Uint8Array => {
+    const hash = keccak256(Buffer.from(publicKey.subarray(1)));
+    const addr = Buffer.from(hash.slice(2 + 24).padStart(64, '0'), 'hex');
+    return addr;
 };
