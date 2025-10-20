@@ -30,6 +30,15 @@ type TxSubscriber struct {
 	logger       *zap.Logger
 }
 
+type Event struct {
+	Opcode           uint32
+	EmitterAddress   *address.Address
+	Sequence         uint64
+	Nonce            uint32
+	Payload          *cell.Cell
+	ConsistencyLevel uint8
+}
+
 func NewTxSubscriber(
 	addr *address.Address,
 	lt uint64,
@@ -140,7 +149,7 @@ func (w *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobser
 			IsReobservation:  isReobservation,
 		}
 
-		// messagesConfirmed.Inc()
+		messagesConfirmed.Inc()
 		if isReobservation {
 			watchers.ReobservationsByChain.WithLabelValues("ton", "std").Inc()
 		}
@@ -184,52 +193,23 @@ func (w *Watcher) findMessagePublishedEvents(tx *tlb.Transaction) ([]*MessagePub
 	for _, msg := range messages {
 		if msg.MsgType == tlb.MsgTypeExternalOut {
 			extMsg := msg.AsExternalOut()
-			msgBody := extMsg.Payload().BeginParse()
-			opcode, err := msgBody.LoadUInt(32)
+			event, err := w.parseEvent(extMsg)
 			if err != nil {
+				return nil, fmt.Errorf("parseEvent: %w", err)
+			}
+
+			if event == nil {
 				continue
-			}
-			if opcode != OpcodeMessagePublished {
-				continue
-			}
-
-			emitterAddress, err := msgBody.LoadAddr()
-			if err != nil {
-				return nil, fmt.Errorf("failed to load emitter address")
-			}
-
-			if emitterAddress == nil {
-				return nil, fmt.Errorf("emitter address is nil")
-			}
-
-			sequence, err := msgBody.LoadUInt(64)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load sequence")
-			}
-
-			nonce, err := msgBody.LoadUInt(32)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load nonce")
-			}
-
-			payload, err := msgBody.LoadRefCell()
-			if err != nil {
-				return nil, fmt.Errorf("failed to load payload")
-			}
-
-			consistencyLevel, err := msgBody.LoadUInt(8)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load consistency_level")
 			}
 
 			externalMessages = append(externalMessages, &MessagePublishedEvent{
 				TransactionID:    extMsg.Payload().Hash(),
-				OPCode:           uint32(opcode),
-				EmitterAddress:   emitterAddress,
-				Sequence:         sequence,
-				Nonce:            uint32(nonce),
-				Payload:          payload,
-				ConsistencyLevel: uint8(consistencyLevel),
+				OPCode:           event.Opcode,
+				EmitterAddress:   event.EmitterAddress,
+				Sequence:         event.Sequence,
+				Nonce:            event.Nonce,
+				Payload:          event.Payload,
+				ConsistencyLevel: event.ConsistencyLevel,
 			})
 		}
 	}
@@ -244,6 +224,55 @@ func (w *Watcher) GetTransactionByReobserveRequest(ctx context.Context, txHash [
 	}
 
 	return tx, nil
+}
+
+func (w *Watcher) parseEvent(extMsg *tlb.ExternalMessageOut) (*Event, error) {
+	msgBody := extMsg.Payload().BeginParse()
+	opcode, err := msgBody.LoadUInt(32)
+	if err != nil {
+		return nil, nil
+	}
+	if opcode != OpcodeMessagePublished {
+		return nil, nil
+	}
+
+	emitterAddress, err := msgBody.LoadAddr()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load emitter address")
+	}
+
+	if emitterAddress == nil {
+		return nil, fmt.Errorf("emitter address is nil")
+	}
+
+	sequence, err := msgBody.LoadUInt(64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sequence")
+	}
+
+	nonce, err := msgBody.LoadUInt(32)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load nonce")
+	}
+
+	payload, err := msgBody.LoadRefCell()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load payload")
+	}
+
+	consistencyLevel, err := msgBody.LoadUInt(8)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load consistency_level")
+	}
+
+	return &Event{
+		Opcode:           uint32(opcode),
+		EmitterAddress:   emitterAddress,
+		Sequence:         sequence,
+		Nonce:            uint32(nonce),
+		Payload:          payload,
+		ConsistencyLevel: uint8(consistencyLevel),
+	}, nil
 }
 
 func (ts *TxSubscriber) logFinishWork(err error) {
