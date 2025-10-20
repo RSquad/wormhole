@@ -8,7 +8,8 @@ if [[ "$EUID" -eq 0 ]]; then
   exit 1
 fi
 
-EXT_IP=$(curl ipinfo.io/ip)
+EXT_IP=$(curl -s -H "Metadata-Flavor: Google" \
+  "http://metadata/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip")
 
 IFACE=$(ip route | awk '/default/ { print $5 }')
 
