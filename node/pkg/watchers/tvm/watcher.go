@@ -136,7 +136,7 @@ func (w *Watcher) Run(ctx context.Context) error {
 				if err != nil {
 					logger.Error("Failed to get latest seqno", zap.Error(err))
 				} else {
-					// currentHeight.Set(float64(height))
+					currentHeight.Set(float64(height))
 					logger.Debug("ton_getLatestSeqno", zap.Int64("result", int64(height)))
 
 					p2p.DefaultRegistry.SetNetworkStats(w.chainID, &gossipv1.Heartbeat_Network{

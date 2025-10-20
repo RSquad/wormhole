@@ -149,7 +149,7 @@ func (w *Watcher) inspectBody(logger *zap.Logger, tx *tlb.Transaction, isReobser
 			IsReobservation:  isReobservation,
 		}
 
-		// messagesConfirmed.Inc()
+		messagesConfirmed.Inc()
 		if isReobservation {
 			watchers.ReobservationsByChain.WithLabelValues("ton", "std").Inc()
 		}
