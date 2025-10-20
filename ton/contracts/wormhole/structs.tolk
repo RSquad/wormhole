@@ -107,7 +107,7 @@ fun verifyVmSignatures(
             signature.loadUint(256), signature.loadUint(256), signature.loadUint(8));
         // recover guardian key
         val signatory = solEcrecover(vaaHash, v, r, s);
-        assert (guardianIndex > lastIndex) throw ERROR_SGINATURE_INDICES_MUST_BE_ASCENDING;
+        assert (guardianIndex > lastIndex) throw ERROR_SIGNATURE_INDICES_MUST_BE_ASCENDING;
         lastIndex = guardianIndex;
         assert (guardianIndex < guardianSet.count) throw ERROR_GUARDIAN_INDEX_OUT_OF_BOUNDS;
         // get guardian key

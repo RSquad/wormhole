@@ -22,7 +22,7 @@ describe('Integrator', () => {
     let recipient: SandboxContract<TreasuryContract>;
     let integrator: SandboxContract<Integrator>;
     let wormhole: SandboxContract<Wormhole>;
-    const keys = Crypto.makeRandomKeyPairs(NUM_GUARDIANS, false);
+    const keys = Crypto.makeRandomKeyPairs(NUM_GUARDIANS, { compressed: false });
     const guardianSetIndex = 0;
     const comment = 'test comment';
     let commentPayloadCell: Cell | undefined = undefined;

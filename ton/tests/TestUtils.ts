@@ -47,8 +47,8 @@ export class Crypto {
         return publicKey.length === 33 ? publicKey.subarray(1) : publicKey;
     };
 
-    static makeRandomKeyPairs = (count: number, compressed: boolean = true): KeyPair[] => {
-        return Array.from({ length: count }, () => Crypto.makeRandomKeyPair(compressed));
+    static makeRandomKeyPairs = (count: number, opts: {compressed: boolean} = {compressed: true}): KeyPair[] => {
+        return Array.from({ length: count }, () => Crypto.makeRandomKeyPair(opts.compressed));
     };
 
     static mapKeyPairsToEvmAddresses = (keyPairs: KeyPair[]): Buffer[] => {
