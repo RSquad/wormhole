@@ -1,6 +1,9 @@
-import "../libraries/errors";
+tolk 1.1
 
-const VERSION = 1;
+import "../libraries/errors"
+import "../libraries/primitives"
+
+const VERSION = 1
 
 struct GuardianSet {
     keys: map<uint8, uint256>
@@ -15,30 +18,56 @@ struct Signature {
 
 struct VM {
     version: uint8
+    guardianSetIndex: uint32
+    signatures: map<uint8, Signature>
+    signaturesCount: uint8
     timestamp: uint32
     nonce: uint32
     emitterChainId: uint16
     emitterAddress: uint256 // bytes32
     sequence: uint64
     consistencyLevel: uint8
-    guardianSetIndex: uint32
-    signatures: map<uint8, Signature>
-    signaturesCount: uint8
     payload: cell
 }
 
 fun VM.parse(c: cell): (VM, uint256) {
+    /*
+vaa#_
+    version:uint8 
+    guardianSetIndex:uint32
+    signaturesCount:uint8
+    signatures:HashmapE<uint8, Signature>
+--- (offset = 49 bits)
+    timestamp:uint32
+    nonce:uint32
+    emitterChainId:uint16
+    emitterAddress:uint256
+    sequence:uint64
+    consistencyLevel:uint8
+--- (offset = 457 bits)
+    payload:cell
+= VAA
+*/
     var cs = c.beginParse();
     val version = cs.loadUint(8);
     val guardianSetIndex = cs.loadUint(32);
     val signaturesCount = cs.loadUint(8);
     val signatures: map<uint8, Signature> = createMapFromLowLevelDict(cs.loadDict());
-    val hash = cs.hash();
-    val vm = VM{
-        version: version,
-        guardianSetIndex: guardianSetIndex,
-        signatures: signatures,
-        signaturesCount: signaturesCount,
+    // make a copy of the remaining slice to calculate the hash of VAA
+    var cs_copy = cs;
+    // load VAA data without payload
+    val part1 = cs_copy.loadBits(408);
+    var parts = createEmptyTuple();
+    parts.push(part1);
+    // split payload cell to tuple of slices
+    parts = splitChainOfCellsToTuple(cs_copy.loadRef().beginParse(), parts);
+    // apply keccak256 to the tuple of slices and then apply keccak256 to the result
+    val vaaHash = keccak256(beginCell().storeUint(keccak256_tuple(parts), 256));
+    val vm = VM {
+        version,
+        guardianSetIndex,
+        signatures,
+        signaturesCount,
         timestamp: cs.loadUint(32),
         nonce: cs.loadUint(32),
         emitterChainId: cs.loadUint(16),
@@ -48,9 +77,58 @@ fun VM.parse(c: cell): (VM, uint256) {
         payload: cs.loadRef(),
     };
     cs.assertEnd();
-    return (vm, hash);
+    return (vm, vaaHash);
 }
 
-fun verifyVmSignatures(vmHash: uint256, guardianSet: GuardianSet, signatures: map<uint8, Signature>): bool {
+@inline
+fun solEcrecover(vaaHash: uint256, v: uint8, r: uint256, s: uint256): uint160 {
+    val (_, x1: uint256, x2: uint256, valid: bool) = ecrecover(vaaHash, v, r, s);
+    assert (valid) throw ERROR_ECRECOVER_FAILED;
+    var publicKeyHash = keccak256(beginCell().storeUint(x1, 256).storeUint(x2, 256));
+    return publicKeyHash & ((1 << 160) - 1);
+}
+
+fun verifyVmSignatures(
+    vaaHash: uint256,
+    guardianSet: GuardianSet,
+    signatures: map<uint8, Signature>,
+    signaturesCount: uint8,
+): bool {
+    var lastIndex = -1;
+    var realSigCount = 0;
+    // enumerate signatures in ascending order
+    var value = signatures.findFirst();
+    while (value.isFound) {
+        val sigData = value.loadValue();
+        var signature = sigData.signature as slice;
+        val guardianIndex = sigData.guardianIndex;
+        // unpack signature components
+        val (r, s, v) = (
+            signature.loadUint(256), signature.loadUint(256), signature.loadUint(8));
+        // recover guardian key
+        val signatory = solEcrecover(vaaHash, v, r, s);
+        assert (guardianIndex > lastIndex) throw ERROR_SIGNATURE_INDICES_MUST_BE_ASCENDING;
+        lastIndex = guardianIndex;
+        assert (guardianIndex < guardianSet.count) throw ERROR_GUARDIAN_INDEX_OUT_OF_BOUNDS;
+        // get guardian key
+        val guardianKey = guardianSet.keys.mustGet(guardianIndex);
+        if (signatory != guardianKey) {
+            return false;
+        }
+        realSigCount += 1;
+        value = signatures.iterateNext(value);
+    }
+    assert (realSigCount == signaturesCount) throw ERROR_INVALID_SIGNATURES_COUNT;
     return true;
+}
+
+@inline
+fun splitChainOfCellsToTuple(cs: slice, t: tuple): tuple {
+    while (!cs.isEndOfRefs()) {
+        var next = cs.loadRef().beginParse();
+        t.push(cs);
+        cs = next;
+    }
+    t.push(cs);
+    return t;
 }

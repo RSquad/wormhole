@@ -11,18 +11,11 @@ import {
     SendMode,
     Slice,
     TupleItem,
+    TupleReader,
 } from '@ton/core';
 import { Opcodes } from './Constants';
-
-export type GuardianSet = {
-    keys: Buffer[];
-    expirationTime: number;
-};
-
-export type Signature = {
-    signature: Buffer; // 65 bytes
-    guardianIndex: number;
-};
+import { GuardianSet, GuardianSetDictionaryValue, GuardianSignature, ParsedVaa } from './Structs';
+import { writeCellsToBuffer } from './conversion';
 
 export type WormholeConfig = {
     messageFee: bigint;
@@ -36,36 +29,14 @@ export type WormholeConfig = {
     id: number; // unique contract ID
 };
 
-export const GuardianSetDictionaryValue = {
-    serialize: (src: GuardianSet, builder: Builder) => {
-        const keysDict = Dictionary.empty(Dictionary.Keys.Uint(8), Dictionary.Values.Buffer(32));
-        src.keys.forEach((key, index) => {
-            keysDict.set(index, key);
-        });
-        builder.storeDict(keysDict).storeUint(src.keys.length, 8).storeUint(src.expirationTime, 32);
-    },
-    parse: (src: Slice): GuardianSet => {
-        const keysDict = src.loadDict(Dictionary.Keys.Uint(8), Dictionary.Values.Buffer(32));
-        const keys = keysDict.keys().map((key) => {
-            return keysDict.get(key)!;
-        });
-        const count = src.loadUint(8);
-        if (count !== keys.length) {
-            throw new Error('Invalid guardian set count: parsed ' + keys.length + ' keys, got ' + count);
-        }
-        const expirationTime = src.loadUint(32);
-        return { keys, expirationTime };
-    },
-};
-
 export const SignatureDictionaryValue = {
-    serialize: (src: Signature, builder: Builder) => {
-        builder.storeBuffer(src.signature, 65).storeUint(src.guardianIndex, 8);
+    serialize: (src: GuardianSignature, builder: Builder) => {
+        builder.storeBuffer(src.signature, 65).storeUint(src.index, 8);
     },
-    parse: (src: Slice): Signature => {
+    parse: (src: Slice): GuardianSignature => {
         const signature = src.loadBuffer(65);
-        const guardianIndex = src.loadUint(8);
-        return { signature, guardianIndex };
+        const index = src.loadUint(8);
+        return { signature, index };
     },
 };
 
@@ -170,5 +141,44 @@ export class Wormhole implements Contract {
         const args: TupleItem[] = [{ type: 'slice', cell: beginCell().storeAddress(sender).endCell() }];
         const result = await provider.get('getSequence', args);
         return result.stack.readNumber();
+    }
+
+    async getQuorum(provider: ContractProvider): Promise<number> {
+        const result = await provider.get('getQuorum', []);
+        return result.stack.readNumber();
+    }
+
+    async getParseVM(provider: ContractProvider, vmCell: Cell): Promise<ParsedVaa> {
+        const args: TupleItem[] = [{ type: 'cell', cell: vmCell }];
+        const result = await provider.get('parseVM', args);
+        const readSignatures = (stack: TupleReader): GuardianSignature[] => {
+            const dict = stack
+                .readCell()
+                .beginParse()
+                .loadDictDirect(Dictionary.Keys.Uint(8), SignatureDictionaryValue)
+                .values()
+                .map((value) => {
+                    return {
+                        index: value.index,
+                        signature: value.signature,
+                    };
+                });
+            stack.skip(1);
+            return dict;
+        };
+        const vaa: ParsedVaa = {
+            version: result.stack.readNumber(),
+            guardianSetIndex: result.stack.readNumber(),
+            guardianSignatures: readSignatures(result.stack),
+            timestamp: result.stack.readNumber(),
+            nonce: result.stack.readNumber(),
+            emitterChain: result.stack.readNumber(),
+            emitterAddress: Buffer.from(result.stack.readBigNumber().toString(16).padStart(64, '0'), 'hex'),
+            sequence: result.stack.readBigNumber(),
+            consistencyLevel: result.stack.readNumber(),
+            payload: writeCellsToBuffer(result.stack.readCell()),
+            hash: Buffer.from(result.stack.readBigNumber().toString(16).padStart(64, '0'), 'hex'),
+        };
+        return vaa;
     }
 }
