@@ -30,3 +30,14 @@ struct (0x851679D3) ParseAndVerifyVMAnswer {
     encodedVaa: cell
     tail: cell
 }
+
+// Request execution message from integrator to executor
+struct RequestExecution {
+    queryId: uint64
+    dstChain: uint16
+    dstAddr: uint256
+    refundAddr: uint256
+    signedQuote: cell
+    request: cell
+    relayInstructions: cell
+}

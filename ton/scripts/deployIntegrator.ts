@@ -6,12 +6,14 @@ import { Random } from '../tests/TestUtils';
 export async function run(provider: NetworkProvider) {
     const ui = provider.ui();
     const wormholeAddress = await ui.inputAddress('Wormhole address');
+    const executorAddress = await ui.inputAddress('Executor address');
     const integrator = provider.open(
         Integrator.createFromConfig(
             {
                 id: Random.id(16),
                 nonce: 0,
                 wormholeAddress,
+                executorAddress,
             },
             await compile('Integrator'),
         ),

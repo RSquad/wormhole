@@ -13,6 +13,12 @@ struct Signature {
     guardianIndex: uint8
 }
 
+struct VAARequest {
+    chainId: uint16
+    emitterAddress: uin256
+    sequence: uint64
+}
+
 struct VM {
     version: uint8
     timestamp: uint32

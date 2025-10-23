@@ -3,6 +3,7 @@ import { Opcodes } from './Constants';
 
 export type IntegratorConfig = {
     wormholeAddress: Address;
+    executorAddress: Address;
     nonce: number;
     id: number;
 };
@@ -10,6 +11,7 @@ export type IntegratorConfig = {
 export function integratorConfigToCell(config: IntegratorConfig): Cell {
     return beginCell()
         .storeAddress(config.wormholeAddress)
+        .storeAddress(config.executorAddress)
         .storeUint(config.nonce, 32)
         .storeUint(config.id, 16)
         .endCell();

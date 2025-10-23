@@ -13,6 +13,7 @@ so these constants are unused.
 */
 const OP_SEND_COMMENT = stringCrc32("op::integrator::send_comment");
 const OP_RELAY_COMMENT = stringCrc32("op::integrator::Relay_comment");
+const OP_REQUEST_EXECUTION = stringCrc32("op::integrator::request_execution");
 
 const ERROR_INVALID_TAIL = 1000;
 const CHAIN_ID_TON = 62;
@@ -20,6 +21,7 @@ const CHAIN_ID_TON = 62;
 
 struct Storage {
     wormholeAddress: address
+    executorAddress: address
     nonce: uint32
     id: uint16
 }
@@ -34,13 +36,18 @@ fun Storage.save(self) {
     contract.setData(self.toCell())
 }
 
-// Call on source chain to send a comment
+// Call on source chain to send a comment 
 struct (0x222A627E) SendComment {
     queryId: uint64
     consistencyLevel: uint8
     chainId: uint16
     to: uint256
     comment: cell
+    totalCost: uint256
+    refundAddress: address
+    signedQuote: cell
+    gasLimit: uint128
+    extraRelayInstructions: cell
 }
 
 // Call on destination chain to relay a comment to the recipient
@@ -80,8 +87,25 @@ fun onInternalMessage(in: InMessage) {
 
             storage.nonce += 1;
             storage.save();
+
+            val requestForExecution = RequestExecution {
+                queryId: msg.queryId,
+                dstChain: msg.chainId,
+                dstAddr: msg.to,
+                refundAddr: msg.refundAddress,
+                signedQuote: msg.signedQuote,
+                request: VAARequest {
+                    chainId: msg.chainId,
+                    sequence: storage.nonce - 1
+                    address: this
+                }
+                relayInstructions: msg.extraRelayInstructions
+            };
             
             call(storage.wormholeAddress, 0, SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE, payload);
+
+            call(storage.executorAddress, 0, SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE, requestForExecution);
+
         }
         PublishMessageAnswer => {
             val tailHash = beginCell().storeUint(0x11223344, 32).endCell().hash();
