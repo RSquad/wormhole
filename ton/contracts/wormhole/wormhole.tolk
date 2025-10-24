@@ -42,7 +42,7 @@ fun Storage.useSequence(mutate self, sender: address): uint64 {
     }
 }
 
-type AllowedMessage = PublishMessage | ParseAndVerifyVM
+type AllowedMessage = PublishMessage | ParseAndVerifyVM | PublishMessageWithRelay
 
 @inline
 fun onPublishMessage(sender: address, msgValue: coins, params: PublishMessage) {
@@ -65,6 +65,17 @@ fun onPublishMessage(sender: address, msgValue: coins, params: PublishMessage) {
         storage.messageFee + contract.getStoragePaidPayment(), 
         RESERVE_MODE_INCREASE_BY_ORIGINAL_BALANCE
     );
+}
+
+@inline
+fun onPublishMessageWithRelay(sender: address, msgValue: coins, params: PublishMessageWithRelay) {
+    onPublishMessage(sender, msgValue, PublishMessage{
+        queryId: params.queryId,
+        nonce: params.nonce,
+        consistencyLevel: params.consistencyLevel,
+        payload: params.payload,
+        tail: params.tail
+    });
 }
 
 @inline
@@ -98,9 +109,14 @@ fun onInternalMessage(in: InMessage) {
     match (msg) {
         PublishMessage => {
             onPublishMessage(in.senderAddress, in.valueCoins, msg);
-            val answer = PublishMessageAnswer{ queryId: msg.queryId, tail: msg.tail, requestExecution: msg.requestExecution};
+            val answer = PublishMessageAnswer{ queryId: msg.queryId, tail: msg.tail};
             // we've reserved balance before tx + messageFee + storageFee, so send 
             // all remaining balance back to the sender
+            sendRemaining(in.senderAddress, OP_PUBLISH_MESSAGE, answer);
+        }
+        PublishMessageWithRelay => {
+            onPublishMessageWithRelay(in.senderAddress, in.valueCoins, msg);
+            val answer = PublishMessageWithRelayAnswer{ queryId: msg.queryId, tail: msg.tail, requestExecution: msg.requestExecution};
             sendRemaining(in.senderAddress, OP_PUBLISH_MESSAGE, answer);
         }
         ParseAndVerifyVM => {

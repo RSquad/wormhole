@@ -117,7 +117,6 @@ export class Wormhole implements Contract {
             consistencyLevel: number;
             payload: Cell;
             tail?: Cell;
-            requestExecution?: Cell;
         },
     ) {
         await provider.internal(via, {
@@ -130,7 +129,34 @@ export class Wormhole implements Contract {
                 .storeUint(opts.consistencyLevel, 8)
                 .storeRef(opts.payload)
                 .storeRef(opts.tail ?? beginCell().endCell())
-                .storeRef(opts.requestExecution ?? beginCell().endCell())
+                .endCell(),
+        });
+    }
+
+    async sendPublishMessageWithRelay(
+        provider: ContractProvider,
+        via: Sender,
+        opts: {
+            value: bigint;
+            queryId?: bigint | number;
+            nonce: number;
+            consistencyLevel: number;
+            payload: Cell;
+            tail?: Cell;
+            requestExecution: Cell;
+        },
+    ) {
+        await provider.internal(via, {
+            value: opts.value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(Opcodes.OP_PUBLISH_MESSAGE, 32)
+                .storeUint(BigInt(opts.queryId ?? 0), 64)
+                .storeUint(opts.nonce, 32)
+                .storeUint(opts.consistencyLevel, 8)
+                .storeRef(opts.payload)
+                .storeRef(opts.tail ?? beginCell().endCell())
+                .storeRef(opts.requestExecution)
                 .endCell(),
         });
     }

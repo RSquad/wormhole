@@ -23,8 +23,16 @@ export type CommentOpts = {
     chainId: number;
     to: Buffer;
     comment: string;
+};
+
+export type CommentWithRelayOpts = {
+    queryId: number;
+    consistencyLevel: number;
+    chainId: number;
+    to: Buffer;
+    comment: string;
     totalCost: bigint; // uint256
-    refundAddress: Address;
+    refundAddress: Buffer; // uint256
     signedQuote: Cell;
     gasLimit: bigint; // uint128
     extraRelayInstructions: Cell;
@@ -72,8 +80,26 @@ export class Integrator implements Contract {
                 .storeUint(opts.chainId, 16)
                 .storeBuffer(opts.to, 32)
                 .storeStringRefTail(opts.comment)
+                .endCell(),
+        });
+    }
+
+    async sendCommentWithRelay(provider: ContractProvider, via: Sender, value: bigint, opts: CommentWithRelayOpts) {
+        if (opts.to.length !== 32) {
+            throw new Error('address must be 32 bytes');
+        }
+        await provider.internal(via, {
+            value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(Opcodes.OP_SEND_COMMENT, 32)
+                .storeUint(opts.queryId, 64)
+                .storeUint(opts.consistencyLevel, 8)
+                .storeUint(opts.chainId, 16)
+                .storeBuffer(opts.to, 32)
+                .storeStringRefTail(opts.comment)
                 .storeUint(opts.totalCost, 256)
-                .storeAddress(opts.refundAddress)
+                .storeBuffer(opts.refundAddress, 32)
                 .storeRef(opts.signedQuote)
                 .storeUint(opts.gasLimit, 128)
                 .storeRef(opts.extraRelayInstructions)

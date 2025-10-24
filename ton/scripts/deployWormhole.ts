@@ -6,6 +6,7 @@ import { Crypto } from '../tests/TestUtils';
 import { TON_CHAIN_ID } from '../wrappers/Constants';
 
 export async function run(provider: NetworkProvider) {
+    const ui = provider.ui();
     const keys = new Array(1).fill(0).map(() => Crypto.makeRandomKeyPair());
     const publicKeys = keys.map((key) => Crypto.toXOnly(key.keyPair.publicKey as Buffer));
 
@@ -36,4 +37,6 @@ export async function run(provider: NetworkProvider) {
     await wormhole.sendDeploy(provider.sender(), toNano(0.1));
 
     await provider.waitForDeploy(wormhole.address);
+
+    ui.write(`Wormhole deployed at ${wormhole.address.toString()}`);
 }

@@ -15,7 +15,7 @@ struct Signature {
 
 struct VAARequest {
     chainId: uint16
-    emitterAddress: uin256
+    emitterAddress: uint256
     sequence: uint64
 }
 

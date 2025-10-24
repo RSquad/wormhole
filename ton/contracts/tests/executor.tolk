@@ -15,7 +15,7 @@ fun onInternalMessage(in: InMessage) {
     match (msg) {
         RequestExecution => {
             // Parse signedQuote cell: [quoter(256) | universalPayeeAddress(256) | src(16) | dst(16) | expiry(64)]
-            var s = lazy msg.signedQuote.beginParse();
+            var s = msg.signedQuote.beginParse();
             val quoterAddress = s.loadUint(256);
             val universalPayeeAddress = s.loadUint(256);
             val quoteSrcChain = s.loadUint(16) as uint16;
@@ -26,13 +26,11 @@ fun onInternalMessage(in: InMessage) {
             assert(quoteDstChain == msg.dstChain) throw ERROR_QUOTE_DST_CHAIN_MISMATCH;
             assert(expiryTime > blockchain.now()) throw ERROR_QUOTE_EXPIRED;
 
-            // Validate TON address
-            assert(universalPayeeAddress.bits() != 256) throw const ERROR_NOT_TON_ADDRESS;
-
             val payeeAddress = buildAddress(0, universalPayeeAddress);
 
+            val quoterAddr = buildAddress(0, quoterAddress);
             val event = RequestForExecutionEvent {
-                quoterAddress: quoterAddress,
+                quoterAddress: quoterAddr,
                 value: in.valueCoins,
                 dstChain: msg.dstChain,
                 dstAddr: msg.dstAddr,

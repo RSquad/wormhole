@@ -36,15 +36,23 @@ fun Storage.save(self) {
     contract.setData(self.toCell())
 }
 
-// Call on source chain to send a comment 
 struct (0x222A627E) SendComment {
     queryId: uint64
     consistencyLevel: uint8
     chainId: uint16
     to: uint256
     comment: cell
+}
+
+// Call on source chain to send a comment 
+struct (0x222A627E) SendCommentWithRelay {
+    queryId: uint64
+    consistencyLevel: uint8
+    chainId: uint16
+    to: uint256
+    comment: cell
     totalCost: uint256
-    refundAddress: address
+    refundAddress: uint256
     signedQuote: cell
     gasLimit: uint128
     extraRelayInstructions: cell
@@ -66,12 +74,31 @@ struct (0x00000001) VAAValidatedByCoreEvent {
     valid: bool
 }
 
-type Operations = SendComment | PublishMessageAnswer | RelayComment | ParseAndVerifyVMAnswer
+type Operations = SendComment | SendCommentWithRelay | PublishMessageAnswer | PublishMessageWithRelayAnswer | RelayComment | ParseAndVerifyVMAnswer
 
 fun onInternalMessage(in: InMessage) {
     val msg = lazy Operations.fromSlice(in.body);
     match (msg) {
         SendComment => {
+            var storage = lazy Storage.load();
+            val payload = PublishMessage {
+                queryId: msg.queryId,
+                nonce: storage.nonce,
+                consistencyLevel: msg.consistencyLevel,
+                payload: CommentVaa {
+                    chainId: msg.chainId,
+                    to: msg.to,
+                    comment: msg.comment
+                }.toCell(),
+                tail: beginCell().storeUint(0x11223344, 32).endCell()
+            };
+
+            storage.nonce += 1;
+            storage.save();
+
+            call(storage.wormholeAddress, 0, SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE, payload);
+        }
+        SendCommentWithRelay => {
             var storage = lazy Storage.load();
 
             val requestForExecution = RequestExecution {
@@ -80,15 +107,11 @@ fun onInternalMessage(in: InMessage) {
                 dstAddr: msg.to,
                 refundAddr: msg.refundAddress,
                 signedQuote: msg.signedQuote,
-                request: VAARequest {
-                    chainId: msg.chainId,
-                    sequence: storage.nonce - 1,
-                    address: this
-                },
+                request: VAARequest { chainId: msg.chainId, emitterAddress: (0 as uint256), sequence: storage.nonce as uint64 }.toCell(),
                 relayInstructions: msg.extraRelayInstructions
             };
 
-            val payload = PublishMessage {
+            val payload = PublishMessageWithRelay {
                 queryId: msg.queryId,
                 nonce: storage.nonce,
                 consistencyLevel: msg.consistencyLevel,
@@ -108,6 +131,11 @@ fun onInternalMessage(in: InMessage) {
 
         }
         PublishMessageAnswer => {
+            val tailHash = beginCell().storeUint(0x11223344, 32).endCell().hash();
+            assert(msg.tail.hash() == tailHash) throw ERROR_INVALID_TAIL;
+        }
+        PublishMessageWithRelayAnswer => {
+            var storage = lazy Storage.load();
             val tailHash = beginCell().storeUint(0x11223344, 32).endCell().hash();
             assert(msg.tail.hash() == tailHash) throw ERROR_INVALID_TAIL;
 

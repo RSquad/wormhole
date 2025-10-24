@@ -70,6 +70,7 @@ describe('Integrator', () => {
                     id: Random.id(16),
                     nonce: 0,
                     wormholeAddress: wormhole.address,
+                    executorAddress: recipient.address,
                 },
                 integratorCode,
             ),
