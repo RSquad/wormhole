@@ -12,6 +12,7 @@
         "gas:snapshot": "blueprint snapshot",
         "deploy:core": "blueprint run deployWormhole --mnemonic --testnet",
         "deploy:integrator": "blueprint run deployIntegrator --mnemonic --testnet",
+        "deploy:executor": "blueprint run deployExecutor --mnemonic --testnet",
         "dapp": "npx blueprint scaffold"
     },
     "dependencies": {

@@ -117,6 +117,7 @@ export class Wormhole implements Contract {
             consistencyLevel: number;
             payload: Cell;
             tail?: Cell;
+            requestExecution?: Cell;
         },
     ) {
         await provider.internal(via, {
@@ -129,6 +130,7 @@ export class Wormhole implements Contract {
                 .storeUint(opts.consistencyLevel, 8)
                 .storeRef(opts.payload)
                 .storeRef(opts.tail ?? beginCell().endCell())
+                .storeRef(opts.requestExecution ?? beginCell().endCell())
                 .endCell(),
         });
     }

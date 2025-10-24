@@ -73,20 +73,6 @@ fun onInternalMessage(in: InMessage) {
     match (msg) {
         SendComment => {
             var storage = lazy Storage.load();
-            val payload = PublishMessage {
-                queryId: msg.queryId,
-                nonce: storage.nonce,
-                consistencyLevel: msg.consistencyLevel,
-                payload: CommentVaa {
-                    chainId: msg.chainId,
-                    to: msg.to,
-                    comment: msg.comment
-                }.toCell(),
-                tail: beginCell().storeUint(0x11223344, 32).endCell()
-            };
-
-            storage.nonce += 1;
-            storage.save();
 
             val requestForExecution = RequestExecution {
                 queryId: msg.queryId,
@@ -96,20 +82,36 @@ fun onInternalMessage(in: InMessage) {
                 signedQuote: msg.signedQuote,
                 request: VAARequest {
                     chainId: msg.chainId,
-                    sequence: storage.nonce - 1
+                    sequence: storage.nonce - 1,
                     address: this
-                }
+                },
                 relayInstructions: msg.extraRelayInstructions
             };
+
+            val payload = PublishMessage {
+                queryId: msg.queryId,
+                nonce: storage.nonce,
+                consistencyLevel: msg.consistencyLevel,
+                payload: CommentVaa {
+                    chainId: msg.chainId,
+                    to: msg.to,
+                    comment: msg.comment
+                }.toCell(),
+                tail: beginCell().storeUint(0x11223344, 32).endCell(),
+                requestExecution: requestForExecution.toCell()
+            };
+
+            storage.nonce += 1;
+            storage.save();
             
             call(storage.wormholeAddress, 0, SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE, payload);
-
-            call(storage.executorAddress, 0, SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE, requestForExecution);
 
         }
         PublishMessageAnswer => {
             val tailHash = beginCell().storeUint(0x11223344, 32).endCell().hash();
             assert(msg.tail.hash() == tailHash) throw ERROR_INVALID_TAIL;
+
+            call(storage.executorAddress, 0, SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE, msg.requestExecution);
         }
         RelayComment => {
             var storage = lazy Storage.load();

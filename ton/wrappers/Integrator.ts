@@ -23,6 +23,11 @@ export type CommentOpts = {
     chainId: number;
     to: Buffer;
     comment: string;
+    totalCost: bigint; // uint256
+    refundAddress: Address;
+    signedQuote: Cell;
+    gasLimit: bigint; // uint128
+    extraRelayInstructions: Cell;
 };
 
 export type RelayCommentOpts = {
@@ -67,6 +72,11 @@ export class Integrator implements Contract {
                 .storeUint(opts.chainId, 16)
                 .storeBuffer(opts.to, 32)
                 .storeStringRefTail(opts.comment)
+                .storeUint(opts.totalCost, 256)
+                .storeAddress(opts.refundAddress)
+                .storeRef(opts.signedQuote)
+                .storeUint(opts.gasLimit, 128)
+                .storeRef(opts.extraRelayInstructions)
                 .endCell(),
         });
     }

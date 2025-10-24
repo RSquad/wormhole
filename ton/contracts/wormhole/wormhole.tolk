@@ -98,7 +98,7 @@ fun onInternalMessage(in: InMessage) {
     match (msg) {
         PublishMessage => {
             onPublishMessage(in.senderAddress, in.valueCoins, msg);
-            val answer = PublishMessageAnswer{ queryId: msg.queryId, tail: msg.tail };
+            val answer = PublishMessageAnswer{ queryId: msg.queryId, tail: msg.tail, requestExecution: msg.requestExecution};
             // we've reserved balance before tx + messageFee + storageFee, so send 
             // all remaining balance back to the sender
             sendRemaining(in.senderAddress, OP_PUBLISH_MESSAGE, answer);

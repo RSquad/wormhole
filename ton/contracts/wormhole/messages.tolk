@@ -9,12 +9,14 @@ struct (0x1CE51423) PublishMessage {
     consistencyLevel: uint8
     payload: cell
     tail: cell
+    requestExecution: cell
 }
 
 // opcode = OP_PUBLISH_MESSAGE | ANSWER_BIT
 struct (0x9CE51423) PublishMessageAnswer {
     queryId: uint64
     tail: cell
+    requestExecution: cell
 }
 
 struct (0x051679D3) ParseAndVerifyVM {
