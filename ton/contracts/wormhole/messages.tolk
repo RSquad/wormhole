@@ -48,7 +48,7 @@ struct (0x851679D3) ParseAndVerifyVMAnswer {
 }
 
 // Request execution message from integrator to executor
-struct RequestExecution {
+struct (0xE6EC7E01) RequestExecution {
     queryId: uint64
     dstChain: uint16
     dstAddr: uint256

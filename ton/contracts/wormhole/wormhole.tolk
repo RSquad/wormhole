@@ -117,7 +117,7 @@ fun onInternalMessage(in: InMessage) {
         PublishMessageWithRelay => {
             onPublishMessageWithRelay(in.senderAddress, in.valueCoins, msg);
             val answer = PublishMessageWithRelayAnswer{ queryId: msg.queryId, tail: msg.tail, requestExecution: msg.requestExecution};
-            sendRemaining(in.senderAddress, OP_PUBLISH_MESSAGE, answer);
+            sendRemaining(in.senderAddress, OP_PUBLISH_MESSAGE_WITH_RELAY, answer);
         }
         ParseAndVerifyVM => {
             onParseAndVerifyVM(msg);

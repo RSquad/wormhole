@@ -44,8 +44,8 @@ struct (0x222A627E) SendComment {
     comment: cell
 }
 
-// Call on source chain to send a comment 
-struct (0x222A627E) SendCommentWithRelay {
+// Call on source chain to send a comment
+struct (0x222A627F) SendCommentWithRelay {
     queryId: uint64
     consistencyLevel: uint8
     chainId: uint16
@@ -74,7 +74,7 @@ struct (0x00000001) VAAValidatedByCoreEvent {
     valid: bool
 }
 
-type Operations = SendComment | SendCommentWithRelay | PublishMessageAnswer | PublishMessageWithRelayAnswer | RelayComment | ParseAndVerifyVMAnswer
+type Operations = SendCommentWithRelay | SendComment | PublishMessageAnswer | PublishMessageWithRelayAnswer | RelayComment | ParseAndVerifyVMAnswer
 
 fun onInternalMessage(in: InMessage) {
     val msg = lazy Operations.fromSlice(in.body);
@@ -101,13 +101,16 @@ fun onInternalMessage(in: InMessage) {
         SendCommentWithRelay => {
             var storage = lazy Storage.load();
 
+            val addr = contract.getAddress();
+            var (workchain, emitterAddress) = addr.getWorkchainAndHash();
+
             val requestForExecution = RequestExecution {
                 queryId: msg.queryId,
                 dstChain: msg.chainId,
                 dstAddr: msg.to,
                 refundAddr: msg.refundAddress,
                 signedQuote: msg.signedQuote,
-                request: VAARequest { chainId: msg.chainId, emitterAddress: (0 as uint256), sequence: storage.nonce as uint64 }.toCell(),
+                request: VAARequest { chainId: msg.chainId, emitterAddress: emitterAddress, sequence: storage.nonce as uint64 }.toCell(),
                 relayInstructions: msg.extraRelayInstructions
             };
 

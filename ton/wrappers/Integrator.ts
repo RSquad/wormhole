@@ -92,7 +92,7 @@ export class Integrator implements Contract {
             value,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell()
-                .storeUint(Opcodes.OP_SEND_COMMENT, 32)
+                .storeUint(Opcodes.OP_SEND_COMMENT_WITH_RELAY, 32)
                 .storeUint(opts.queryId, 64)
                 .storeUint(opts.consistencyLevel, 8)
                 .storeUint(opts.chainId, 16)
