@@ -327,7 +327,7 @@ def build_node_yaml():
                     "--tonConfigURL",
                     "https://ton.org/testnet-global.config.json",
                     "--tonContract",
-                    "kQDdZwjsO7dTFbq-Z_luMizPN5IS6ODcUlBftEhMIKXFk4D9"
+                    "kQD0JsDjea7QjLfg2WTfpnQ2jppcpDT_FAzio8k-d3Ss6cK6"
                 ]
 
             if wormchain:
@@ -541,6 +541,7 @@ docker_build(
     # https://github.com/tilt-dev/tilt/issues/3708
     live_update = [
         sync("./ethereum/src", "/home/node/app/src"),
+        sync("./ethereum/sh", "/home/node/app/ethereum/sh"),
     ],
 )
 

@@ -88,3 +88,25 @@ source ./sh/deployCustomConsistencyLevel.sh
 returnInfo=$(cat ./broadcast/DeployCustomConsistencyLevel.s.sol/$INIT_EVM_CHAIN_ID/run-latest.json)
 CUSTOM_CONSISTENCY_LEVEL=$(jq -r '.returns.deployedAddress.value' <<< "$returnInfo")
 echo "CUSTOM_CONSISTENCY_LEVEL: $CUSTOM_CONSISTENCY_LEVEL"
+
+# Deploy Executor with deterministic address
+# The address 0xb4ffe5983b0b748124577af4d16953bd096b6897 is achieved
+# by deploying at the correct nonce position
+# NUM_RUNS is calculated to ensure the Executor deploys at the desired address
+NUM_RUNS=0 source ./sh/deployDummyContract.sh
+
+echo "Deploying Executor"
+source ./sh/deployExecutor.sh
+returnInfo=$(cat ./broadcast/DeployExecutor.s.sol/$INIT_EVM_CHAIN_ID/run-latest.json)
+EXECUTOR_ADDRESS=$(jq -r '.returns.deployedAddress.value' <<< "$returnInfo")
+echo "EXECUTOR_ADDRESS: $EXECUTOR_ADDRESS"
+
+# Deploy CommentIntegrator with deterministic address
+# It needs Wormhole and Executor addresses
+NUM_RUNS=0 source ./sh/deployDummyContract.sh
+
+echo "Deploying CommentIntegrator"
+WORMHOLE_ADDRESS=$WORMHOLE_ADDRESS EXECUTOR_ADDRESS=$EXECUTOR_ADDRESS source ./sh/deployCommentIntegrator.sh
+returnInfo=$(cat ./broadcast/DeployCommentIntegrator.s.sol/$INIT_EVM_CHAIN_ID/run-latest.json)
+COMMENT_INTEGRATOR_ADDRESS=$(jq -r '.returns.deployedAddress.value' <<< "$returnInfo")
+echo "COMMENT_INTEGRATOR_ADDRESS: $COMMENT_INTEGRATOR_ADDRESS"

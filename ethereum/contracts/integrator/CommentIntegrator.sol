@@ -14,6 +14,7 @@ contract CommentIntegrator {
     using BytesLib for bytes;
     
     address public wormhole;
+    address public executor;
     
     struct CommentVaa {
         uint16 chainId;
@@ -45,9 +46,11 @@ contract CommentIntegrator {
         uint256 relayFee;
     }
     
-    constructor(address _wormhole) {
+    constructor(address _wormhole, address _executor) {
         require(_wormhole != address(0), "Invalid wormhole address");
+        require(_executor != address(0), "Invalid executor address");
         wormhole = _wormhole;
+        executor = _executor;
     }
     
     /**
@@ -123,7 +126,7 @@ contract CommentIntegrator {
     }
 
     function _requestExecution(
-        address executor,
+        address executorAddr,
         uint16 dstChain,
         bytes32 dstAddr,
         address refundAddr,
@@ -132,7 +135,9 @@ contract CommentIntegrator {
         bytes calldata relayInstructions,
         uint256 relayFee
     ) internal {
-        IExecutor(executor).requestExecution{value: relayFee}(
+        // Use the executor address from constructor if executorAddr is zero, otherwise use provided address
+        address exec = executorAddr != address(0) ? executorAddr : executor;
+        IExecutor(exec).requestExecution{value: relayFee}(
             dstChain,
             dstAddr,
             refundAddr,
