@@ -110,7 +110,7 @@ fun onInternalMessage(in: InMessage) {
                 dstAddr: msg.to,
                 refundAddr: msg.refundAddress,
                 signedQuote: msg.signedQuote,
-                request: VAARequest { chainId: msg.chainId, emitterAddress: emitterAddress, sequence: storage.nonce as uint64 }.toCell(),
+                request: VAARequest { chainId: 62, emitterAddress: emitterAddress, sequence: storage.nonce as uint64 }.toCell(),
                 relayInstructions: msg.extraRelayInstructions
             };
 

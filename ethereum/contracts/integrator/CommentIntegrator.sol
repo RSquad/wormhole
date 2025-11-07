@@ -81,13 +81,15 @@ contract CommentIntegrator {
 
     /**
      * @notice Send a comment and request relay execution on destination
-     * @dev Publishes a Wormhole message, then calls Executor.requestExecution with provided params
+     * @dev Publishes a Wormhole message, then calls Executor.requestExecution with provided params.
+     *      The requestBytes is automatically computed from chainId (2), contract address, and sequence.
      * @param chainId Emitter chain id to encode in payload
      * @param to Recipient address on destination chain (bytes32)
      * @param comment Comment text
      * @param nonce Message nonce
      * @param consistencyLevel Desired consistency level (finality)
-     * @param p Relay parameters (executor, dstChain, dstAddr, refundAddr, signedQuote, requestBytes, relayInstructions, relayFee)
+     * @param p Relay parameters (executor, dstChain, dstAddr, refundAddr, signedQuote, relayInstructions, relayFee).
+     *          Note: requestBytes in RelayParams is ignored and computed automatically.
      * @return sequence The sequence number of the published message
      */
     function sendCommentWithRelay(
@@ -106,8 +108,18 @@ contract CommentIntegrator {
         sequence = _publishComment(chainId, to, comment, nonce, consistencyLevel, messageFee);
         emit CommentSent(msg.sender, to, comment, sequence);
 
-        // 2) Request execution on destination via Executor
-        _requestExecution(p.executor, p.dstChain, p.dstAddr, p.refundAddr, p.signedQuote, p.requestBytes, p.relayInstructions, p.relayFee);
+        // 2) Compute requestBytes: chainId (2 bytes) + emitterAddress (32 bytes) + sequence (8 bytes)
+        // chainId = 2 (Ethereum devnet)
+        // emitterAddress = address(this) zero-padded to 32 bytes
+        // sequence = sequence from Wormhole
+        bytes memory computedRequestBytes = abi.encodePacked(
+            uint16(2),                    // chainId (2 bytes)
+            bytes32(uint256(uint160(address(this)))),  // emitterAddress (32 bytes, zero-padded)
+            sequence                      // sequence (8 bytes)
+        );
+
+        // 3) Request execution on destination via Executor
+        _requestExecution(p.executor, p.dstChain, p.dstAddr, p.refundAddr, p.signedQuote, computedRequestBytes, p.relayInstructions, p.relayFee);
     }
 
     function _publishComment(
@@ -131,7 +143,7 @@ contract CommentIntegrator {
         bytes32 dstAddr,
         address refundAddr,
         bytes calldata signedQuote,
-        bytes calldata requestBytes,
+        bytes memory requestBytes,
         bytes calldata relayInstructions,
         uint256 relayFee
     ) internal {
