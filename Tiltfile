@@ -124,10 +124,14 @@ if not ci:
 def k8s_yaml_with_ns(objects):
     return k8s_yaml(namespace_inject(objects, namespace))
 
-docker_build(
-    ref = "cli-gen",
-    context = ".",
-    dockerfile = "Dockerfile.cli",
+custom_build(
+    'cli-gen',
+    'DOCKER_BUILDKIT=1 docker buildx build --progress=plain --platform linux/amd64 -f Dockerfile.cli --build-context wormhole-sdk-ts=../wormhole-sdk-ts --load -t $EXPECTED_REF .',
+    deps=[
+        'Dockerfile.cli',
+        'clients/js',
+        '../wormhole-sdk-ts',
+    ],
 )
 
 docker_build(
@@ -323,7 +327,7 @@ def build_node_yaml():
                     "--tonConfigURL",
                     "https://ton.org/testnet-global.config.json",
                     "--tonContract",
-                    "kQAz5rRlycWBC9dCI8aCx-mQBsOhjsMIdoOmIm_q_yyBTUG4"
+                    "kQDVFkGBx9pjkSma05CBVLurXbIlTqhaGyLJ3Chu9Y0PXE6d"
                 ]
 
             if wormchain:
@@ -537,6 +541,7 @@ docker_build(
     # https://github.com/tilt-dev/tilt/issues/3708
     live_update = [
         sync("./ethereum/src", "/home/node/app/src"),
+        sync("./ethereum/sh", "/home/node/app/ethereum/sh"),
     ],
 )
 

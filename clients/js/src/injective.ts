@@ -11,7 +11,7 @@ import {
   PrivateKey,
   TxGrpcApi,
 } from "@injectivelabs/sdk-ts";
-import { DEFAULT_STD_FEE, getStdFee } from "@injectivelabs/utils";
+import { getStdFee } from "@injectivelabs/utils";
 import { fromUint8Array } from "js-base64";
 import { NETWORKS } from "./consts";
 import { impossible, Payload } from "./vaa";

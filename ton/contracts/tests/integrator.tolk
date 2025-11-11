@@ -100,7 +100,6 @@ fun onInternalMessage(in: InMessage) {
             emit(VAAValidatedByCoreEvent{ valid: msg.valid });
             val (vaa, vaaHash) = VM.parse(msg.encodedVaa);
             val comment = CommentVaa.fromCell(vaa.payload);
-            assert(comment.chainId == CHAIN_ID_TON) throw ERROR_INVALID_CHAIN_ID;
             val toAddress = buildAddress(0, comment.to);
             call(toAddress, 0, SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE, (0x00000000 as uint32, comment.comment));
         }

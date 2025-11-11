@@ -494,6 +494,20 @@ export async function execute_evm(
       }
       break;
     default:
+      if (payload.type === "Comment") {
+        if (!contract_address) {
+          throw Error(`Integrator address is required`);
+        }
+        await relayCommentToEthereum(
+            vaa,
+            network,
+            chain as PlatformToChains<"Evm">,
+            contract_address,
+            rpc,
+            payload
+        );
+        break;
+      }
       impossible(payload);
   }
 }
@@ -883,4 +897,66 @@ export async function queryRegistrationsEvm(
     results[cname] = c;
   }
   return results;
+}
+
+export async function relayCommentToEthereum(
+  vaa: Buffer,
+  network: Network,
+  chain: PlatformToChains<"Evm">,
+  integratorAddress: string,
+  rpc?: string,
+  payload: Payload
+): Promise<string> {
+  const n = NETWORKS[network][chain];
+  const rpcUrl = rpc ?? n.rpc;
+  if (!rpcUrl) {
+    throw Error(`No ${network} rpc defined for ${chain}`);
+  }
+
+  const key = n.key;
+  if (!key) {
+    throw Error(`No ${network} key defined for ${chain}`);
+  }
+
+  const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+  const wallet = new ethers.Wallet(key, provider);
+
+  const integratorABI = [
+    "function relayComment(bytes memory encodedVaa) external"
+  ];
+
+  const integrator = new ethers.Contract(
+    integratorAddress,
+    integratorABI,
+    wallet
+  );
+
+  console.log(`Relaying comment VAA to Ethereum CommentIntegrator at ${integratorAddress}...`);
+
+  console.log("payload.type:", "Comment");
+
+  console.log("payload.chain_id:", payload.chainId);
+
+  const toBuf: Buffer =
+      Buffer.isBuffer(payload.to) ? payload.to : Buffer.from(payload.to as Uint8Array);
+  const toHex = toBuf.toString("hex");
+  const toPrefix = payload.chainId === 62 ? "0:" : "0x";
+  console.log("payload.to:", toPrefix + toHex);
+
+  const commentStr =
+      typeof payload.commentBytes === "string"
+          ? payload.commentBytes
+          : Buffer.from(payload.commentBytes as Uint8Array).toString("utf8");
+  console.log("payload.comment:", commentStr);
+  
+  const tx = await integrator.relayComment(vaa, {
+    gasLimit: 1000000
+  });
+  console.log(`Transaction sent: ${tx.hash}`);
+  
+  const receipt = await tx.wait();
+  console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+  console.log(`VAA successfully delivered to Ethereum`);
+  
+  return tx.hash;
 }

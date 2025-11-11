@@ -58,6 +58,14 @@ export interface Other {
   ascii?: string;
 }
 
+export interface Comment {
+  module: "Core";
+  type: "Comment";
+  chainId: number;
+  to: string;
+  comment: string;
+}
+
 // All the different types of payloads
 export type Payload =
   | GuardianSetUpgrade
@@ -75,7 +83,8 @@ export type Payload =
   | CoreContractRecoverChainId
   | PortalContractRecoverChainId<"TokenBridge">
   | PortalContractRecoverChainId<"NFTBridge">
-  | WormholeRelayerSetDefaultDeliveryProvider;
+  | WormholeRelayerSetDefaultDeliveryProvider
+  | Comment;
 
 export type ContractUpgrade =
   | CoreContractUpgrade
@@ -105,7 +114,8 @@ export function parse(buffer: Buffer): VAA<Payload | Other> {
     .or(coreContractRecoverChainId())
     .or(portalContractRecoverChainId("TokenBridge"))
     .or(portalContractRecoverChainId("NFTBridge"))
-    .or(wormholeRelayerSetDefaultDeliveryProvider());
+    .or(wormholeRelayerSetDefaultDeliveryProvider())
+    .or (commentParser());
   let payload: Payload | Other | null = parser.parse(vaa.payload);
   if (payload === null) {
     payload = {
@@ -203,7 +213,7 @@ export function vaaDigest(vaa: VAA<Payload | Other>) {
 
 function vaaBody(vaa: VAA<Payload | Other>) {
   let payload_str: string;
-  if (vaa.payload.type === "Other") {
+  if (vaa.payload.type === "Other"||vaa.payload.type === "Comment") {
     payload_str = vaa.payload.hex;
   } else {
     let payload = vaa.payload;
@@ -757,6 +767,23 @@ function tokenBridgeAttestMetaParser(): P<TokenBridgeAttestMeta> {
         greedy: true,
         assert: (str) => str === "",
       })
+  );
+}
+
+function commentParser(): P<Comment> {
+  return new P(
+      new Parser()
+      .endianess("big")
+      .string("module", { length: () => 0, formatter: () => "Comment" })
+      .string("type",   { length: () => 0, formatter: () => "Comment" })
+
+          .uint16("chainId")
+          .buffer("to", { length: 32,
+            formatter: (arr) => Buffer.from(arr)})
+
+          .buffer("commentBytes",
+              { readUntil: "eof",
+                formatter: (arr: Uint8Array) => Buffer.from(arr).toString("utf8")},)
   );
 }
 

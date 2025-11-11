@@ -61,6 +61,7 @@
         "coreNativeAddress": "0xC89Ce4735882C9F0f0FE26686c53074E09B0D550",
         "tokenBridgeEmitterAddress": "0000000000000000000000000290fb167208af455bb137780163b7b7a9a10c16",
         "tokenBridgeNativeAddress": "0x0290FB167208Af455bB137780163b7B7a9a10C16",
+        "commentIntegratorAddress": "0xfE82e8f24A51E670133f4268cDfc164c49FC3b37",
         "nftBridgeEmitterAddress": "00000000000000000000000026b4afb60d6c903165150c6f0aa14f8016be4aec",
         "nftBridgeAddress": "0x26b4afb60d6c903165150c6f0aa14f8016be4aec"
       },

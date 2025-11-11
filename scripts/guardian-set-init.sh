@@ -98,11 +98,45 @@ aptosNFTBridge=$(jq --raw-output '.chains."22".contracts.nftBridgeEmitterAddress
 # invoke CLI commands to create registration VAAs
 solTokenBridgeVAA=$(worm generate registration -m TokenBridge -c solana -a ${solTokenBridge} -g ${guardiansPrivateCSV})
 ethTokenBridgeVAA=$(worm generate registration -m TokenBridge -c ethereum -a ${ethTokenBridge} -g ${guardiansPrivateCSV})
-terraTokenBridgeVAA=$(worm generate registration -m TokenBridge -c terra -a ${terraTokenBridge} -g ${guardiansPrivateCSV})
+# terra token bridge (optional; skip if not supported by CLI)
+terraTokenBridgeVAA=""
+set +e
+worm chains 2>/dev/null | grep -iq "\bTerra\b"
+supports_terra=$?
+set -e
+if [[ $supports_terra -eq 0 ]]; then
+    set +e
+    terraTokenBridgeVAA=$(worm generate registration -m TokenBridge -c terra -a ${terraTokenBridge} -g ${guardiansPrivateCSV})
+    gen_status=$?
+    set -e
+    if [[ $gen_status -ne 0 ]]; then
+        echo "Skipping Terra registration: CLI does not support Terra" >&2
+        terraTokenBridgeVAA=""
+    fi
+else
+    echo "Skipping Terra registration: Terra not supported by CLI" >&2
+fi
 bscTokenBridgeVAA=$(worm generate registration -m TokenBridge -c bsc -a ${bscTokenBridge} -g ${guardiansPrivateCSV})
 algoTokenBridgeVAA=$(worm generate registration -m TokenBridge -c algorand -a ${algoTokenBridge} -g ${guardiansPrivateCSV})
 nearTokenBridgeVAA=$(worm generate registration -m TokenBridge -c near -a ${nearTokenBridge} -g ${guardiansPrivateCSV})
-terra2TokenBridgeVAA=$(worm generate registration -m TokenBridge -c terra2 -a ${terra2TokenBridge} -g ${guardiansPrivateCSV})
+# terra2 token bridge (optional; skip if not supported by CLI)
+terra2TokenBridgeVAA=""
+set +e
+worm chains 2>/dev/null | grep -iq "\bTerra2\b"
+supports_terra2=$?
+set -e
+if [[ $supports_terra2 -eq 0 ]]; then
+    set +e
+    terra2TokenBridgeVAA=$(worm generate registration -m TokenBridge -c terra2 -a ${terra2TokenBridge} -g ${guardiansPrivateCSV})
+    gen_status2=$?
+    set -e
+    if [[ $gen_status2 -ne 0 ]]; then
+        echo "Skipping Terra2 registration: CLI does not support Terra2" >&2
+        terra2TokenBridgeVAA=""
+    fi
+else
+    echo "Skipping Terra2 registration: Terra2 not supported by CLI" >&2
+fi
 suiTokenBridgeVAA=$(worm generate registration -m TokenBridge -c sui -a ${suiTokenBridge} -g ${guardiansPrivateCSV})
 aptosTokenBridgeVAA=$(worm generate registration -m TokenBridge -c aptos -a ${aptosTokenBridge} -g ${guardiansPrivateCSV})
 wormchainTokenBridgeVAA=$(worm generate registration -m TokenBridge -c wormchain -a ${wormchainTokenBridge} -g ${guardiansPrivateCSV})
@@ -149,9 +183,11 @@ upsert_env_file $envFile $ethTokenBridge $ethTokenBridgeVAA
 upsert_env_file $ethFile $ethNFTBridge $ethNFTBridgeVAA
 upsert_env_file $envFile $ethNFTBridge $ethNFTBridgeVAA
 
-# terra token bridge
-upsert_env_file $ethFile $terraTokenBridge $terraTokenBridgeVAA
-upsert_env_file $envFile $terraTokenBridge $terraTokenBridgeVAA
+# terra token bridge (only if generated)
+if [[ -n "$terraTokenBridgeVAA" ]]; then
+    upsert_env_file $ethFile $terraTokenBridge $terraTokenBridgeVAA
+    upsert_env_file $envFile $terraTokenBridge $terraTokenBridgeVAA
+fi
 
 # bsc token bridge
 upsert_env_file $ethFile $bscTokenBridge $bscTokenBridgeVAA
@@ -161,9 +197,11 @@ upsert_env_file $envFile $bscTokenBridge $bscTokenBridgeVAA
 upsert_env_file $ethFile $algoTokenBridge $algoTokenBridgeVAA
 upsert_env_file $envFile $algoTokenBridge $algoTokenBridgeVAA
 
-# terra2 token bridge
-upsert_env_file $ethFile $terra2TokenBridge $terra2TokenBridgeVAA
-upsert_env_file $envFile $terra2TokenBridge $terra2TokenBridgeVAA
+# terra2 token bridge (only if generated)
+if [[ -n "$terra2TokenBridgeVAA" ]]; then
+    upsert_env_file $ethFile $terra2TokenBridge $terra2TokenBridgeVAA
+    upsert_env_file $envFile $terra2TokenBridge $terra2TokenBridgeVAA
+fi
 
 # near token bridge
 upsert_env_file $ethFile $nearTokenBridge $nearTokenBridgeVAA
