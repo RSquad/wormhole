@@ -12,6 +12,7 @@ import {
     chainToChainId,
     contracts,
 } from "@wormhole-foundation/sdk-base";
+import { sendTonCommentWithRelay } from "../ton";
 
 export const command = "ton";
 export const desc = "TON utilities";
@@ -50,6 +51,12 @@ export const builder = (y: typeof yargs) =>
                         type: "number",
                         default: 15,
                         demandOption: false,
+                    })
+                    .option("with-relay", {
+                        describe: "Enable relay execution on destination chain",
+                        type: "boolean",
+                        default: false,
+                        demandOption: false,
                     }),
             async (argv) => {
                 const network = getNetwork(argv.network);
@@ -61,9 +68,14 @@ export const builder = (y: typeof yargs) =>
                 const to = argv.to as string | undefined;
                 const chainId = argv["chain-id"] as number;
                 const cl = (argv["consistency-level"] as number) ?? 15;
+                const withRelay = argv["with-relay"] as boolean;
 
-                const { sendTonComment } = await import("../ton");
-                await sendTonComment(network, rpc, integrator, msg, to, chainId, cl);
+                if (!withRelay) {
+                    const { sendTonComment } = await import("../ton");
+                    await sendTonComment(network, rpc, integrator, msg, to, chainId, cl);
+                } else {
+                    await sendTonCommentWithRelay(network, integrator, msg, to, chainId, cl);
+                }
             }
         )
         .strict()
